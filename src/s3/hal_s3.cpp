@@ -30,7 +30,9 @@ static RTC_NOINIT_ATTR uint32_t hostTest;
 static RTC_NOINIT_ATTR char hostScript[120];
 static uint32_t hostTestUntil;
 #define LOG_FILE "/sdcard/fm1buddy/log.txt"
-#define LOG_PREV "/sdcard/fm1buddy/log-1.txt"  // the run before
+#define LOG_PREV "/sdcard/fm1buddy/log-1.txt"         // the run before
+#define LOG_RECOVERY "/sdcard/fm1buddy/recovery.txt"  // recovery runs, added to: restarts don't take them away
+static const char* logFile = LOG_FILE;
 
 // a crash, kept through the restart (RTC memory) and logged then: decode its addresses against the build's
 // firmware.elf (xtensa-esp32s3-elf-addr2line -pfiaC -e .pio/build/cyd-s3/firmware.elf ADDR...)
@@ -94,7 +96,7 @@ static TaskHandle_t mainTask;
 static void writeLine(const char* line, uint32_t ms) {
   if (!logToSd) {
     Serial.println(line);
-  } else if (FILE* f = fopen(LOG_FILE, "a")) {
+  } else if (FILE* f = fopen(logFile, "a")) {
     fprintf(f, "%7.1f %s\n", ms / 1000.0, line);
     fclose(f);
   }
@@ -174,22 +176,15 @@ void board::begin() {
 #endif
   SD_MMC.setPins(SD_CLK, SD_CMD, SD_D0, SD_D1, SD_D2, SD_D3);
   sdOk = SD_MMC.begin("/sdcard", false);
+  if (!sdOk) {  // (some boards only wire D0: 1-bit)
+    SD_MMC.setPins(SD_CLK, SD_CMD, SD_D0);
+    sdOk = SD_MMC.begin("/sdcard", true);
+  }
   WiFi.mode(WIFI_OFF);
   disk = diskFlag == DISK_MODE && sdOk;
   diskFlag = 0;
   if (disk) {  // the card is the computer's: nothing here touches it, no log on it
     hal::log("fm1buddy: USB disk mode (%u MB)", (unsigned)((uint64_t)SD_MMC.numSectors() * SD_MMC.sectorSize() >> 20));
-    return;
-  }
-  recovery = recoveryFlag == RECOVERY_MODE && sdOk;
-  recoveryFlag = 0;
-  if (recovery) {  // the FM-1 is on the port (not a computer): its USB lines are the key's (key_s3.cpp)
-    mkdir("/sdcard/fm1buddy", 0777);
-    if (newLog()) {
-      logToSd = true;
-    }
-    hal::log("fm1buddy: recovery mode, last reset: %d", (int)esp_reset_reason());
-    logCrash();
     return;
   }
   // a computer on the USB-C port (it sends start-of-frames): stay its serial port. Else: the USB host
@@ -198,6 +193,20 @@ void board::begin() {
   hostTest = 0;
   for (uint32_t t = millis(); !test && millis() - t < 1500 && !computer; delay(10)) {
     computer = HWCDC::isPlugged();
+  }
+  recovery = recoveryFlag == RECOVERY_MODE && sdOk && !computer;  // (not with a computer on the port)
+  recoveryFlag = 0;
+  if (recovery) {  // the FM-1 is on the port (not a computer): its USB lines are the key's (key_s3.cpp)
+    mkdir("/sdcard/fm1buddy", 0777);
+    logFile = LOG_RECOVERY;
+    if (FILE* f = fopen(logFile, "a")) {
+      fputs("--- recovery\n", f);
+      fclose(f);
+      logToSd = true;
+    }
+    hal::log("fm1buddy: recovery mode, last reset: %d", (int)esp_reset_reason());
+    logCrash();
+    return;
   }
   if ((!computer || hal::computerMidi()) && sdOk) {  // (USB MIDI for a computer: no serial port either)
     mkdir("/sdcard/fm1buddy", 0777);
@@ -264,7 +273,7 @@ const char* board::hostTestScript() {
 }
 
 void board::printLog() {
-  for (const char* p : {LOG_PREV, LOG_FILE}) {
+  for (const char* p : {LOG_RECOVERY, LOG_PREV, LOG_FILE}) {
     FILE* f = fopen(p, "r");
     if (!f) {
       continue;

@@ -98,6 +98,10 @@ FM-1 ───────┘                 │
 
       <section id="map" class="panel" data-page="map" hidden>
         <p class="what">Make a <code>midimap.txt</code> for the SD card: the rules for what each device's notes and controls do (see <em>MIDI</em> in <a href="#">Install</a>). Plug your controllers into this computer to see their names and learn their controls; download the file, put it on the card's top folder, and press reload on the board's MIDI page.</p>
+        <div class="actions">
+          <label class="button secondary">Open midimap.txt<input id="map-open" type="file" accept=".txt,text/plain" hidden /></label>
+          <span id="map-opened" class="note">to change one you have (or drop it on this page)</span>
+        </div>
         <h2>Devices</h2>
         <p class="note">A rule names a device by part of its name (any case), as the board's MIDI page shows it. Each one's short name is filled in: change it if it would also match another device.</p>
         <div class="actions">
@@ -124,7 +128,6 @@ FM-1 ───────┘                 │
         <div class="actions">
           <button id="map-save" type="button" class="button">Download midimap.txt</button>
           <button id="map-copy" type="button" class="button secondary">Copy</button>
-          <label class="button secondary">Open one<input id="map-open" type="file" accept=".txt,text/plain" hidden /></label>
           <button id="map-clear" type="button" class="button secondary">Start over</button>
         </div>
       </section>

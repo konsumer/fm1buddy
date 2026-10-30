@@ -617,6 +617,9 @@ async function open(file) {
   learning = null
   render()
   $('#map-problem').textContent = problems.join(' · ')
+  const n = rules().length
+  $('#map-opened').textContent = `Opened ${file.name}: ${n} rule${n === 1 ? '' : 's'}` + (problems.length ? ` · ${problems.join(' · ')}` : '')
+  $('#map-opened').classList.toggle('bad', problems.length > 0)
 }
 
 export function init() {
@@ -657,6 +660,16 @@ export function init() {
       setTimeout(() => ($('#map-copy').textContent = 'Copy'), 1200)
     } catch (_) {}
   }
+  // a file dropped anywhere on the tab
+  document.addEventListener('dragover', (e) => {
+    if (!$('#map').hidden) e.preventDefault()
+  })
+  document.addEventListener('drop', (e) => {
+    const f = e.dataTransfer?.files[0]
+    if ($('#map').hidden || !f) return
+    e.preventDefault()
+    open(f)
+  })
   $('#map-open').onchange = (e) => e.target.files[0] && open(e.target.files[0]).then(() => (e.target.value = ''))
   $('#map-clear').onclick = () => {
     state = fresh()

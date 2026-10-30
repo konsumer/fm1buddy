@@ -1,6 +1,8 @@
 // The fm1buddy installer page. The firmware is the latest release's, copied next to the page by the pages
 // workflow (fw/): GitHub's release downloads can't be fetched from another site, its API can.
 
+import { init as initMap } from './midimap.js'
+
 const REPO = 'konsumer/fm1buddy'
 const FW = {
   s3: 'fw/fm1buddy-cyd-s3.bin',
@@ -75,4 +77,19 @@ function cases(files) {
   }
 }
 
+// ------------------------------------------------------------------------------------------- tabs ---
+function tab() {
+  const name = location.hash === '#midimap' ? 'map' : 'install'
+  for (const el of $$('[data-page]')) {
+    el.hidden = el.dataset.page !== name
+  }
+  for (const a of $$('.tabs a')) {
+    a.classList.toggle('on', a.dataset.tab === name)
+  }
+  document.body.dataset.tab = name
+}
+
+window.addEventListener('hashchange', tab)
+tab()
+initMap()
 release()

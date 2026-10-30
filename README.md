@@ -10,7 +10,7 @@ All without a computer/phone/etc:
 - nice themed menus
 - Backup flash/settings/presets/etc (from stock V15, or any firmware)
 - Send/record sounds (.syx, like DX7 banks)
-- MIDI-routing: Bluetooth & USB devices pass notes, clock & controls to each other, or map them with rules in `midimap.txt` on the SD card (by touch, or built on the web page's MIDI map tab, say, several controllers each onto their own FM-1 channel). Add and delete rules by touch, split a keyboard at any key, transpose, and set or scale velocity.
+- MIDI-routing: Bluetooth & USB devices pass notes, clock & controls to each other, or map them with rules in `midimap.txt` on the SD card (say, several controllers each onto their own FM-1 channel). Add and delete rules by touch, split a keyboard at any key, transpose, and set or scale velocity. Or build the file on the web page's MIDI map tab, learning each control from the device.
 - MIDI clock: lead at a tempo (tap tempo, start/stop) or follow a device's clock, with a light on each beat
 - Arpeggiator (up, down, up-down, random, as played; 1/4 to 1/32; up to 4 octaves; hold) and chord memory, for any controller (the FM-1's own notes are left alone)
 - Record the FM-1's audio to WAV files on the SD card, over USB, with level meters and a clip warning (firmware that sends USB audio: Felucca, and those built on it like SLOOP; any class-compliant USB mic or sound card works too)

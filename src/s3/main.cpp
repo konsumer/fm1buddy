@@ -165,8 +165,15 @@ void setup() {
   lv_indev_set_read_cb(in, readTouch);
 
   hal::log("boot: app");
+  // in recovery mode, the serial port off first: its Serial.end() drives D+ and D- low, and the recover page's
+  // job may already be sending the key on them (key_s3.cpp)
+  if (hal::recoveryMode()) {
+    board::usbBegin();
+  }
   ui::begin();
-  board::usbBegin();
+  if (!hal::recoveryMode()) {
+    board::usbBegin();
+  }
   hal::log("fm1buddy: up, %u KB internal RAM free, %u KB PSRAM free",
            (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024), (unsigned)(ESP.getFreePsram() / 1024));
 }

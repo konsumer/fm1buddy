@@ -174,12 +174,14 @@ void board::begin() {
 #ifdef LED_RGB
   rgbLedWrite(LED_RGB, 0, 0, 0);
 #endif
+#ifdef SD_CLK  // (a board without an SD card: no SD_ pins)
   SD_MMC.setPins(SD_CLK, SD_CMD, SD_D0, SD_D1, SD_D2, SD_D3);
   sdOk = SD_MMC.begin("/sdcard", false);
   if (!sdOk) {  // (some boards only wire D0: 1-bit)
     SD_MMC.setPins(SD_CLK, SD_CMD, SD_D0);
     sdOk = SD_MMC.begin("/sdcard", true);
   }
+#endif
   WiFi.mode(WIFI_OFF);
   disk = diskFlag == DISK_MODE && sdOk;
   diskFlag = 0;
@@ -194,12 +196,12 @@ void board::begin() {
   for (uint32_t t = millis(); !test && millis() - t < 1500 && !computer; delay(10)) {
     computer = HWCDC::isPlugged();
   }
-  recovery = recoveryFlag == RECOVERY_MODE && sdOk && !computer;  // (not with a computer on the port)
+  recovery = recoveryFlag == RECOVERY_MODE && !computer;  // (not with a computer on the port)
   recoveryFlag = 0;
   if (recovery) {  // the FM-1 is on the port (not a computer): its USB lines are the key's (key_s3.cpp)
     mkdir("/sdcard/fm1buddy", 0777);
     logFile = LOG_RECOVERY;
-    if (FILE* f = fopen(logFile, "a")) {
+    if (FILE* f = sdOk ? fopen(logFile, "a") : 0) {
       fputs("--- recovery\n", f);
       fclose(f);
       logToSd = true;

@@ -20,73 +20,113 @@
       </div>
     </header>
 
+    <nav class="tabs wrap" aria-label="pages">
+      <a href="#" data-tab="install">Install</a>
+      <a href="#midimap" data-tab="map">MIDI map</a>
+    </nav>
+
     <main class="wrap">
-      <section id="s3" class="panel">
-        <p class="what">A <a href="https://store.freenove.com/products/fnk0104?variant=45040270213318">Freenove ESP32-S3 2.8" touch screen</a> (FNK0104B, a "CYD" with an ESP32-S3) with an SD card: it lists the firmwares on its card and on the <a href="https://thefirmwarehub.com">FM-1 Firmware Hub</a> (with what each one is), downloads them over Wi-Fi, and installs them on the FM-1. Its USB-C port is a USB host, so a controller on a hub with the FM-1 plays it; Bluetooth MIDI keyboards, phones and computers join in. Nothing to put together.</p>
-        <h2>You need</h2>
-        <ul>
-          <li>the Freenove ESP32-S3 Display, 2.8", with touch (<strong>FNK0104B</strong>; the A has no touch)</li>
-          <li>a <strong>USB-C OTG adapter with a charging port</strong> (USB-C plug; a USB-A socket and a USB-C charging socket) that passes charging and data <em>at the same time</em>. Look for one sold for the <strong>Chromecast with Google TV</strong>: it's the same situation, a device that is the USB host while it's powered through that port. Many 3-port "splitters" can't: they say "does not support charging and data at the same time". <br />Or a hub with a power input made for the Chromecast or Fire TV (USB-C plug, USB-A ports, a charging port): the adapter and the hub in one.</li>
-          <li>a small USB hub (the adapter powers it)</li>
-          <li>a USB-C charger or a power bank</li>
-          <li>a microSD card (FAT32)</li>
-          <li>Chrome or Edge on a computer, and a USB-C cable that carries data</li>
-        </ul>
-        <h2>Install</h2>
-        <ol class="steps">
-          <li><strong>Plug the board into the computer</strong>, straight in (not through the adapter). If it has an older fm1buddy on it, hold its <strong>BOOT</strong> button (on its back, next to the USB-C) while you plug it in.</li>
-          <li>
-            <strong>Install:</strong> press the button, pick the board's port (<em>USB JTAG/serial debug unit</em>, or <em>usbmodem</em>), and confirm.
-            <div class="actions">
-              <esp-web-install-button class="fw-s3">
-                <button slot="activate" class="button">Install on the CYD-S3</button>
-                <span slot="unsupported" class="note">This browser can't: use Chrome or Edge on a computer (or <a class="fw-s3-bin" download>download the .bin</a> for esptool: <code>esptool.py --chip esp32s3 write_flash 0x0 fm1buddy-cyd-s3.bin</code>).</span>
-                <span slot="not-allowed" class="note">The page must be opened over https.</span>
-              </esp-web-install-button>
-            </div>
-            <p class="note">To update it later, plug it into the computer and install again: on a computer it's a serial port, no BOOT button needed.</p>
-          </li>
-          <li><strong>The SD card</strong> (FAT32): put it in. Firmwares go into its <code>fm1</code> folder: the board downloads them there itself, or copy <code>.fwsc</code> packages there on a computer.</li>
-          <li><strong>Wi-Fi:</strong> on the board, tap the gear, then <em>Wi-Fi</em>, pick your network and type its password. Wi-Fi is only on while it downloads.</li>
-          <li>
-            <strong>Plug in:</strong> the adapter into the board, a hub into the adapter's USB-A, a charger or power bank into its charging port, and the FM-1 and your controller into the hub.
-            <pre class="wiring"><code>controller ─┐
+      <div data-page="install">
+        <section id="s3" class="panel">
+          <p class="what">A <a href="https://store.freenove.com/products/fnk0104?variant=45040270213318">Freenove ESP32-S3 2.8" touch screen</a> (FNK0104B, a "CYD" with an ESP32-S3) with an SD card: it lists the firmwares on its card and on the <a href="https://thefirmwarehub.com">FM-1 Firmware Hub</a> (with what each one is), downloads them over Wi-Fi, and installs them on the FM-1. Its USB-C port is a USB host, so a controller on a hub with the FM-1 plays it; Bluetooth MIDI keyboards, phones and computers join in. Nothing to put together.</p>
+          <h2>You need</h2>
+          <ul>
+            <li>the Freenove ESP32-S3 Display, 2.8", with touch (<strong>FNK0104B</strong>; the A has no touch)</li>
+            <li>a <strong>USB-C OTG adapter with a charging port</strong> (USB-C plug; a USB-A socket and a USB-C charging socket) that passes charging and data <em>at the same time</em>. Look for one sold for the <strong>Chromecast with Google TV</strong>: it's the same situation, a device that is the USB host while it's powered through that port. Many 3-port "splitters" can't: they say "does not support charging and data at the same time". <br />Or a hub with a power input made for the Chromecast or Fire TV (USB-C plug, USB-A ports, a charging port): the adapter and the hub in one.</li>
+            <li>a small USB hub (the adapter powers it)</li>
+            <li>a USB-C charger or a power bank</li>
+            <li>a microSD card (FAT32)</li>
+            <li>Chrome or Edge on a computer, and a USB-C cable that carries data</li>
+          </ul>
+          <h2>Install</h2>
+          <ol class="steps">
+            <li><strong>Plug the board into the computer</strong>, straight in (not through the adapter). If it has an older fm1buddy on it, hold its <strong>BOOT</strong> button (on its back, next to the USB-C) while you plug it in.</li>
+            <li>
+              <strong>Install:</strong> press the button, pick the board's port (<em>USB JTAG/serial debug unit</em>, or <em>usbmodem</em>), and confirm.
+              <div class="actions">
+                <esp-web-install-button class="fw-s3">
+                  <button slot="activate" class="button">Install on the CYD-S3</button>
+                  <span slot="unsupported" class="note">This browser can't: use Chrome or Edge on a computer (or <a class="fw-s3-bin" download>download the .bin</a> for esptool: <code>esptool.py --chip esp32s3 write_flash 0x0 fm1buddy-cyd-s3.bin</code>).</span>
+                  <span slot="not-allowed" class="note">The page must be opened over https.</span>
+                </esp-web-install-button>
+              </div>
+              <p class="note">To update it later, plug it into the computer and install again: on a computer it's a serial port, no BOOT button needed.</p>
+            </li>
+            <li><strong>The SD card</strong> (FAT32): put it in. Firmwares go into its <code>fm1</code> folder: the board downloads them there itself, or copy <code>.fwsc</code> packages there on a computer.</li>
+            <li><strong>Wi-Fi:</strong> on the board, tap the gear, then <em>Wi-Fi</em>, pick your network and type its password. Wi-Fi is only on while it downloads.</li>
+            <li>
+              <strong>Plug in:</strong> the adapter into the board, a hub into the adapter's USB-A, a charger or power bank into its charging port, and the FM-1 and your controller into the hub.
+              <pre class="wiring"><code>controller ─┐
             ├─ USB hub ── OTG adapter ── CYD-S3
 FM-1 ───────┘                 │
                   charger ────┘ (its charging port)</code></pre>
-          </li>
-        </ol>
-        <h2>Use it</h2>
-        <ul>
-          <li><strong>Firmware</strong> (the download icon): <em>SD card</em> lists the firmwares on the card, <em>Hub</em> the Firmware Hub's (filter them by kind, sort them by stars, date or name). Tap one for what it is; <em>Save to SD</em> downloads it, <em>Install</em> (tap it twice) installs it on the FM-1; with no backup of the FM-1 on the SD card yet, it says so first, with a button to make one. Keep the FM-1 plugged in until it says <em>Installed</em>. Each download is checked (its size, sha256 and identity) before it's kept.</li>
-          <li><strong>SLOOP</strong> (in Sounds, the folder icon, with an FM-1 running SLOOP 2.3 or later): <em>Back it up</em> saves everything on it in SLOOP's own file, in <code>sloop</code> on the SD card (its web editor opens them, and its backups go there too). Tap a backup to restore all of it (the FM-1 is backed up first) or load one of its projects. <em>Load .wav files</em> puts a folder of them from <code>sloop/samples</code> into one of its sample slots, each file a key zone named by its root note (<code>bass_C2.wav</code>). For other firmware, Sounds says what it can do, and what to install for more.</li>
-          <li><strong>MIDI</strong> (the note icon): what's on the hub, each with a light when it plays. Whatever one plays, the others hear, unless <code>midimap.txt</code> on the SD card says otherwise: rules like <code>from nanokey -&gt; to fm-1 ch 2</code> or <code>from launchkey cc 1 -&gt; to fm-1 cc 74</code> (the file explains how, and the MIDI page says if a line doesn't read). <em>Mapping</em> lists them in plain words, deletes them, and adds new ones by touch: a device onto its own channel, a keyboard split at any key, transposed, at a fixed or scaled velocity. <em>Clock, arp</em> sends MIDI clock at a tempo (tap it, start and stop) or follows a device's, and has an arpeggiator and chord memory for the controllers' notes. <em>Touch controller</em> makes the screen a controller of its own, <em>Touch</em>: an X/Y pad (each of two fingers sends two CCs, and can play notes along a scale) or 16 pads, as hard as you hit them (harder at a pad's top). Rules like <code>from touch -&gt; to fm-1 ch 2</code> work on it; its gear picks the CCs, the channel, the scale and the notes. <em>Bluetooth MIDI</em> is off until you turn it on there: phones, tablets and computers connect to <em>fm1buddy</em>, and Bluetooth MIDI keyboards and synths around are listed: tap one to connect it (it's remembered).</li>
-          <li><strong>Sounds</strong> (the folder icon): <em>Record audio</em> records the FM-1's own sound over USB to WAV files in <code>recordings</code> on the SD card, with a meter for each side and a warning when it clips (turn the FM-1 down then: its USB level follows MASTER). It needs firmware that sends USB audio: Felucca, and those built on it like SLOOP. A class-compliant USB microphone or sound card works too.</li>
-          <li><strong>Settings</strong> (the gear): Wi-Fi, the color theme, what it starts on (firmware, MIDI, the mapping or the touch controller), the brightness. <em>On a computer</em>: plugged straight into a computer, the board is its serial port (for flashing), or with <em>USB MIDI</em> a MIDI device, <em>fm1buddy</em>, in any music app: the touch controller, the clock and Bluetooth MIDI devices play it, and it plays them. To flash it then, hold <strong>BOOT</strong> as you plug it in. <em>Back up the FM-1</em> saves all of its flash to the SD card. <em>Recover the FM-1</em> is for one that doesn't start any more: pick a firmware or a backup, switch the FM-1 off, plug it straight into the adapter instead of the hub (keep the charger in), tap <em>Start</em>, and switch the FM-1 on. fm1buddy wakes the boot loader in its chip (no firmware can break it), saves its flash as it was, and writes the firmware back.</li>
-        </ul>
-        <h2>A case</h2>
-        <div class="case" data-case="s3">
-          <img src="case/s3.png" alt="The case for the CYD-S3" width="450" height="350" loading="lazy" />
-          <div>
-            <p>Print the base open side up and the lid flat side down, without supports (PLA or PETG). The lid snaps on and holds the board down. The holes in the bottom reach BOOT and RESET, for a paperclip; the SD card goes in at the side.</p>
-            <div class="actions case-links"></div>
+            </li>
+          </ol>
+          <h2>Use it</h2>
+          <ul>
+            <li><strong>Firmware</strong> (the download icon): <em>SD card</em> lists the firmwares on the card, <em>Hub</em> the Firmware Hub's (filter them by kind, sort them by stars, date or name). Tap one for what it is; <em>Save to SD</em> downloads it, <em>Install</em> (tap it twice) installs it on the FM-1; with no backup of the FM-1 on the SD card yet, it says so first, with a button to make one. Keep the FM-1 plugged in until it says <em>Installed</em>. Each download is checked (its size, sha256 and identity) before it's kept.</li>
+            <li><strong>SLOOP</strong> (in Sounds, the folder icon, with an FM-1 running SLOOP 2.3 or later): <em>Back it up</em> saves everything on it in SLOOP's own file, in <code>sloop</code> on the SD card (its web editor opens them, and its backups go there too). Tap a backup to restore all of it (the FM-1 is backed up first) or load one of its projects. <em>Load .wav files</em> puts a folder of them from <code>sloop/samples</code> into one of its sample slots, each file a key zone named by its root note (<code>bass_C2.wav</code>). For other firmware, Sounds says what it can do, and what to install for more.</li>
+            <li><strong>MIDI</strong> (the note icon): what's on the hub, each with a light when it plays. Whatever one plays, the others hear, unless <code>midimap.txt</code> on the SD card says otherwise: rules like <code>from nanokey -&gt; to fm-1 ch 2</code> or <code>from launchkey cc 1 -&gt; to fm-1 cc 74</code> (the file explains how, and the MIDI page says if a line doesn't read). <em>Mapping</em> lists them in plain words, deletes them, and adds new ones by touch: a device onto its own channel, a keyboard split at any key, transposed, at a fixed or scaled velocity. <em>Clock, arp</em> sends MIDI clock at a tempo (tap it, start and stop) or follows a device's, and has an arpeggiator and chord memory for the controllers' notes. <em>Touch controller</em> makes the screen a controller of its own, <em>Touch</em>: an X/Y pad (each of two fingers sends two CCs, and can play notes along a scale) or 16 pads, as hard as you hit them (harder at a pad's top). Rules like <code>from touch -&gt; to fm-1 ch 2</code> work on it; its gear picks the CCs, the channel, the scale and the notes. <em>Bluetooth MIDI</em> is off until you turn it on there: phones, tablets and computers connect to <em>fm1buddy</em>, and Bluetooth MIDI keyboards and synths around are listed: tap one to connect it (it's remembered).</li>
+            <li><strong>Sounds</strong> (the folder icon): <em>Record audio</em> records the FM-1's own sound over USB to WAV files in <code>recordings</code> on the SD card, with a meter for each side and a warning when it clips (turn the FM-1 down then: its USB level follows MASTER). It needs firmware that sends USB audio: Felucca, and those built on it like SLOOP. A class-compliant USB microphone or sound card works too.</li>
+            <li><strong>Settings</strong> (the gear): Wi-Fi, the color theme, what it starts on (firmware, MIDI, the mapping or the touch controller), the brightness. <em>On a computer</em>: plugged straight into a computer, the board is its serial port (for flashing), or with <em>USB MIDI</em> a MIDI device, <em>fm1buddy</em>, in any music app: the touch controller, the clock and Bluetooth MIDI devices play it, and it plays them. To flash it then, hold <strong>BOOT</strong> as you plug it in. <em>Back up the FM-1</em> saves all of its flash to the SD card. <em>Recover the FM-1</em> is for one that doesn't start any more: pick a firmware or a backup, switch the FM-1 off, plug it straight into the adapter instead of the hub (keep the charger in), tap <em>Start</em>, and switch the FM-1 on. fm1buddy wakes the boot loader in its chip (no firmware can break it), saves its flash as it was, and writes the firmware back.</li>
+          </ul>
+          <h2>A case</h2>
+          <div class="case" data-case="s3">
+            <img src="case/s3.png" alt="The case for the CYD-S3" width="450" height="350" loading="lazy" />
+            <div>
+              <p>Print the base open side up and the lid flat side down, without supports (PLA or PETG). The lid snaps on and holds the board down. The holes in the bottom reach BOOT and RESET, for a paperclip; the SD card goes in at the side.</p>
+              <div class="actions case-links"></div>
+            </div>
           </div>
-        </div>
-        <h2>What it can't do</h2>
-        <ul>
-          <li><strong>Up to 4 USB MIDI devices on the hub:</strong> the FM-1 and 3 controllers, say.</li>
-          <li><strong>The hub needs the charger.</strong> The board can't power its USB-C port itself, so the hub and what's on it get their power from the adapter's charging port.</li>
-          <li>Bluetooth stops while Wi-Fi is on (they don't both fit in its memory), and starts again after.</li>
-        </ul>
-      </section>
+          <h2>What it can't do</h2>
+          <ul>
+            <li><strong>Up to 4 USB MIDI devices on the hub:</strong> the FM-1 and 3 controllers, say.</li>
+            <li><strong>The hub needs the charger.</strong> The board can't power its USB-C port itself, so the hub and what's on it get their power from the adapter's charging port.</li>
+            <li>Bluetooth stops while Wi-Fi is on (they don't both fit in its memory), and starts again after.</li>
+          </ul>
+        </section>
 
-      <section class="notes">
-        <h2>Good to know</h2>
-        <ul>
-          <li>The FM-1 only takes firmware over USB, so installing goes through the board's USB host (or a computer).</li>
-          <li>Installing firmware is at your own risk. If the FM-1 won't start, hold <strong>OCT-</strong> while switching it on (the USB rescue), and install again.</li>
-          <li>If a controller sends back everything it receives ("MIDI thru" or "echo" in its settings), turn that off, or messages go round in circles.</li>
-        </ul>
+        <section class="notes">
+          <h2>Good to know</h2>
+          <ul>
+            <li>The FM-1 only takes firmware over USB, so installing goes through the board's USB host (or a computer).</li>
+            <li>Installing firmware is at your own risk. If the FM-1 won't start, hold <strong>OCT-</strong> while switching it on (the USB rescue), and install again.</li>
+            <li>If a controller sends back everything it receives ("MIDI thru" or "echo" in its settings), turn that off, or messages go round in circles.</li>
+          </ul>
+        </section>
+      </div>
+
+      <section id="map" class="panel" data-page="map" hidden>
+        <p class="what">Make a <code>midimap.txt</code> for the SD card: the rules for what each device's notes and controls do (see <em>MIDI</em> in <a href="#">Install</a>). Plug your controllers into this computer to see their names and learn their controls; download the file, put it on the card's top folder, and press reload on the board's MIDI page.</p>
+        <h2>Devices</h2>
+        <p class="note">A rule names a device by part of its name (any case), as the board's MIDI page shows it. Each one's short name is filled in: change it if it would also match another device.</p>
+        <div class="actions">
+          <button id="midi-connect" type="button" class="button">Find MIDI devices</button>
+          <span id="midi-status" class="note"></span>
+        </div>
+        <ul id="devices" class="devices"></ul>
+        <form id="dev-add" class="dev-add">
+          <input placeholder="add one by name (a Bluetooth one, say)" aria-label="device name" spellcheck="false" />
+          <button type="submit" class="button secondary">Add</button>
+        </form>
+        <datalist id="map-devs"></datalist>
+        <h2>Rules</h2>
+        <p class="note">The first rule that matches a message decides; a message no rule matches goes to all the other devices. Leave out what should stay as it came in. <em>Learn</em> fills a rule's left side from the next control you move.</p>
+        <div id="rules"></div>
+        <div class="actions">
+          <button id="learn-new" type="button" class="button">Learn a rule</button>
+          <button id="rule-add" type="button" class="button secondary">Add a rule</button>
+          <button id="note-add" type="button" class="button secondary">Add a comment</button>
+        </div>
+        <h2>midimap.txt</h2>
+        <pre class="map-text"><code id="map-text"></code></pre>
+        <p id="map-problem" class="note bad"></p>
+        <div class="actions">
+          <button id="map-save" type="button" class="button">Download midimap.txt</button>
+          <button id="map-copy" type="button" class="button secondary">Copy</button>
+          <label class="button secondary">Open one<input id="map-open" type="file" accept=".txt,text/plain" hidden /></label>
+          <button id="map-clear" type="button" class="button secondary">Start over</button>
+        </div>
       </section>
     </main>
 

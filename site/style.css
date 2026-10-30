@@ -232,3 +232,240 @@ footer {
   color: var(--dim);
   font-size: 0.9rem;
 }
+
+/* tabs */
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tabs a {
+  padding: 8px 14px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  color: var(--dim);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.tabs a.on {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
+body[data-tab='map'] .video {
+  display: none;
+}
+
+/* the MIDI map */
+#map input,
+#map select,
+#map textarea {
+  min-width: 0;
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+#map button:not(.button) {
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+#map button:not(.button):hover {
+  border-color: var(--accent);
+}
+
+#map .bad {
+  color: var(--bad);
+}
+
+#learn-new.on,
+.rule.learning [data-do='learn'] {
+  animation: listen 1s ease-in-out infinite alternate;
+}
+
+@keyframes listen {
+  to {
+    opacity: 0.5;
+  }
+}
+
+.devices {
+  margin: 8px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.devices li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.devices li.gone .full,
+.devices li.gone .short {
+  opacity: 0.6;
+}
+
+.light {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--line);
+  transition: background 0.15s;
+}
+
+.light.on {
+  background: var(--accent);
+  transition: none;
+}
+
+.devices .short {
+  width: 9em;
+  font-family: ui-monospace, monospace;
+}
+
+.devices .full {
+  flex: 1 1 160px;
+  color: var(--dim);
+  font-size: 0.85rem;
+}
+
+.devices .tools,
+.rule .tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: 100%;
+  padding-left: 20px;
+}
+
+.chips small {
+  color: var(--dim);
+}
+
+.dev-add {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.dev-add input {
+  flex: 1;
+}
+
+.rule {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.rule.learning {
+  border-color: var(--accent);
+}
+
+.rule-top {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.rule .comment {
+  flex: 1;
+  border-color: transparent !important;
+  background: none !important;
+  color: var(--dim) !important;
+  font-style: italic;
+  resize: vertical;
+}
+
+.rule .comment:focus {
+  border-color: var(--line) !important;
+}
+
+.note-item {
+  border-style: dashed;
+}
+
+.side {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: flex-end;
+  margin-top: 6px;
+}
+
+.arrow {
+  padding-bottom: 6px;
+  color: var(--accent);
+}
+
+.f {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.f > span {
+  color: var(--dim);
+  font-size: 0.75rem;
+}
+
+.f.range,
+.f.vel {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 4px;
+}
+
+.f.range > span,
+.f.vel > span {
+  width: 100%;
+}
+
+.f em {
+  color: var(--dim);
+  font-style: normal;
+}
+
+.f.name input {
+  width: 10em;
+}
+
+.f .n {
+  width: 4.5em;
+}
+
+.said {
+  margin: 8px 0 0;
+  color: var(--dim);
+  font-size: 0.85rem;
+}
+
+.map-text {
+  max-height: 420px;
+  font-size: 0.85rem;
+}

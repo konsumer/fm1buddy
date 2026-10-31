@@ -23,7 +23,7 @@ All without a computer/phone/etc:
 - Sample slots on Felucca and the firmwares built on it that kept them (Skiff, JIANT, Melodee, ...): load a folder of WAVs (or one WAV) from `/sloop/samples` into USR1-3, for its SAMPLE engine. fomajam's drum kits load from setups
 - Act as USB disk (to manage files on SD)
 - MIDI-out, turn FM1 into a sequencer (on supported firmware, like [fomajam](https://github.com/konsumer/fomajam))
-- FM1 Recover: write a firmware or backup to an FM-1 that won't start, like [FM-1-transporter](https://github.com/kurogedelic/FM-1-transporter) with no wiring needed (when people say "use RP2040"). Not tested on a real FM-1 yet
+- FM1 Recover: write a firmware or backup to an FM-1 that won't start, like [FM-1-transporter](https://github.com/kurogedelic/FM-1-transporter) with no wiring needed (when people say "use RP2040")
 - Automation options, great for LLM development: switch it into USB MIDI mode from the serial console (`tools/s3.py usbmidi`), and back with a "magic" SysEx message (`tools/s3.py serial`), so tests can run on the real thing.
 
 It should be useful for most firmware, depending on what it supports, but it has some extra stuff that is specific to [fomajam](https://github.com/konsumer/fomajam):

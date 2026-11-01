@@ -1,0 +1,4 @@
+{
+  "what": "A $20 touchscreen box (Freenove ESP32-S3 2.8\", no soldering) that runs your FM-1 or SMK-37 without a computer: install firmware from the SD card or straight from mutant.cloud over Wi-Fi, back up and recover, and play it from USB and Bluetooth MIDI controllers. Adds MIDI routing and mapping, clock, an arpeggiator, chord memory, a touch X/Y pad, and loads WAVs into sample banks for SLOOP, Felucca and fomajam.",
+  "image": "docs/screens/midi.png"
+}

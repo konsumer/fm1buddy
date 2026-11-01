@@ -23,7 +23,7 @@ fit = 0.25;   // between the lid's lip and the walls
 lip_h = 4;
 
 /* [Battery] */
-bat = [36, 29, 4.75];  // Adafruit 500 mAh (1578); 1200 mAh (258): [34, 62, 5]; 2000 mAh (2011): [60, 36, 7]
+bat = [36, 31, 5.2];  // a 503035 cell (500 mAh, 35 x 30 x 5), with a little room; 802540 (1000 mAh): [41, 26, 8.2]
 switch_hole = [0, 0];  // none (the board sleeps by itself); [9, 4.2]: a mini slide switch (SS12D00) in its lead
 
 $fn = 48;

@@ -23,7 +23,7 @@ fit = 0.25;   // between the lid's lip and the walls
 lip_h = 4;
 
 /* [Battery] */
-bat = [36, 31, 5.2];  // a 503035 cell (500 mAh, 35 x 30 x 5), with a little room; 802540 (1000 mAh): [41, 26, 8.2]
+bat = [68, 52, 11];  // room for a 10 mm 3000 mAh cell: 105060, 104060, 103665 (MakerFocus's), or 7.5 x 50 x 60; 503035 (500 mAh): [36, 31, 5.2]
 switch_hole = [0, 0];  // none (the board sleeps by itself); [9, 4.2]: a mini slide switch (SS12D00) in its lead
 
 $fn = 48;
@@ -94,7 +94,9 @@ s_bz = (battery ? bat.z + 0.7 : 0) + S3_BACK + 0.8;           // the board's und
 s_inner_h = s_bz + PCB + S3_FRONT + 0.2;
 sc0 = [-gap, -gap - 1.5];
 sc1 = [S3.x + gap, S3.y + gap + 1.5];
-s_bat = [S3.x - 10 - bat.x, S3.y / 2 - bat.y / 2];           // the battery's corner, toward the far end
+// the battery's corner: in the middle, clear of the posts (x 7 .. 79) and the paperclip holes, wall to wall across
+s_bat = [S3.x / 2 - bat.x / 2, S3.y / 2 - bat.y / 2];
+assert(!battery || (bat.x <= 72 && bat.y <= 53), "the battery is too big: 72 x 53 at most");
 
 module s3_base() {
   usb_z = s_bz - S3_USB.y / 2;

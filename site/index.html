@@ -36,7 +36,7 @@
             <li>a small USB hub (the adapter powers it)</li>
             <li>a USB-C charger or a power bank</li>
             <li>a microSD card (FAT32)</li>
-            <li><em>Optional:</em> a flat 3.7 V LiPo with a <strong>1.25 mm 2-pin plug</strong> (MX1.25, not the common 2 mm JST-PH), like this <a href="https://www.amazon.com/dp/B0BJPPJ49D">503035 500 mAh 2-pack</a> (pick the 1.25 mm plug), for the battery case</li>
+            <li><em>Optional:</em> a flat 3.7 V LiPo for the battery case, up to 68 &times; 52 &times; 11 mm: a 3000 mAh cell like <a href="https://www.amazon.com/dp/B08T6GT7DV">MakerFocus's 4-pack</a> (65 &times; 36 &times; 10 mm, 1.25 mm plug). Any plug is fine: the board comes with a cable for its <code>BAT</code> socket, with bare wires</li>
             <li>Chrome or Edge on a computer, and a USB-C cable that carries data</li>
           </ul>
           <h2>Install</h2>
@@ -76,9 +76,28 @@ FM-1 ───────┘                 │
             <img src="case/s3.png" alt="The case for the CYD-S3" width="450" height="350" loading="lazy" />
             <div>
               <p>Print the base open side up and the lid flat side down, without supports (PLA or PETG). The lid snaps on and holds the board down. The holes in the bottom reach BOOT and RESET, for a paperclip; the SD card goes in at the side.</p>
-              <p class="note">The battery case has room for a 503035 LiPo (500 mAh, 35 &times; 30 &times; 5 mm) under the board, on its <code>BAT</code> socket (MX1.25, 2 pins). Red must go to + on the board: some batteries come wired the other way, so check before plugging it in. It stays connected, so it charges whenever the charger is in, and the board can sleep by itself when nothing is going on: pick how soon in Settings &gt; Sleep (it's off at first), and touch the screen to wake it.</p>
+              <p class="note">The battery case has room for a flat LiPo up to 68 &times; 52 &times; 11 mm under the board (a 3000 mAh cell: most of a day on), on its <code>BAT</code> socket (MX1.25, 2 pins). Red must go to + on the board: some batteries come wired the other way, so check before plugging it in. It stays connected, so it charges whenever the charger is in, and the board can sleep by itself when nothing is going on: pick how soon in Settings &gt; Sleep (it's off at first), and touch the screen to wake it.</p>
               <div class="actions case-links"></div>
             </div>
+          </div>
+          <div class="maker" id="maker">
+            <h3>For your battery</h3>
+            <p class="note">The battery base above has room for one up to 68 &times; 52 &times; 11 mm. For a snug fit, pick yours or type its size (the cell's own, from its listing: room is added), and make a base for it here, in your browser. The lid is the same for all of them.</p>
+            <div class="maker-presets"></div>
+            <div class="maker-size">
+              <label>Length <input name="x" type="number" min="10" max="70" step="0.5" /></label>
+              <span>&times;</span>
+              <label>Width <input name="y" type="number" min="10" max="51" step="0.5" /></label>
+              <span>&times;</span>
+              <label>Thickness <input name="z" type="number" min="2" max="25" step="0.5" /></label>
+              <span>mm</span>
+            </div>
+            <label class="maker-switch"><input name="sw" type="checkbox" /> A hole for a slide switch in the battery's lead (9 &times; 4.2 mm, like an SS12D00)</label>
+            <div class="actions">
+              <button class="button maker-go" type="button">Make the base</button>
+              <span class="maker-out"></span>
+            </div>
+            <p class="note maker-status"></p>
           </div>
           <h2>What it can't do</h2>
           <ul>

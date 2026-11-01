@@ -2,6 +2,7 @@
 // workflow (fw/): GitHub's release downloads can't be fetched from another site, its API can.
 
 import { init as initMap } from './midimap.js'
+import { init as initMaker } from './casemaker.js'
 
 const REPO = 'konsumer/fm1buddy'
 const FW = {
@@ -92,4 +93,5 @@ function tab() {
 window.addEventListener('hashchange', tab)
 tab()
 initMap()
+initMaker()
 release()

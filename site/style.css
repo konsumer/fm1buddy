@@ -469,3 +469,76 @@ body[data-tab='map'] .video {
   max-height: 420px;
   font-size: 0.85rem;
 }
+
+/* the battery case maker */
+.maker {
+  margin-top: 16px;
+  padding: 4px 16px 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.maker-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.maker-presets button {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.maker-presets button.on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.maker-size {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  align-items: flex-end;
+  margin: 8px 0;
+}
+
+.maker-size label {
+  display: flex;
+  flex-direction: column;
+  color: var(--dim);
+  font-size: 0.8rem;
+}
+
+.maker-size input {
+  width: 5.5em;
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+.maker-size input:disabled,
+.maker-switch:has(input:disabled) {
+  opacity: 0.4;
+}
+
+.maker-switch {
+  display: block;
+  margin: 6px 0;
+  font-size: 0.9rem;
+}
+
+.maker-out .button {
+  margin-left: 6px;
+}

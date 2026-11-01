@@ -45,6 +45,8 @@ jobs:
           if [ -n "$tag" ]; then
             # the case's STLs, from releases that have them
             gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir site/fw --clobber --pattern 'fm1buddy-case-s3*.stl' || true
+            # and the OpenSCAD file they were made from, for the page's battery case maker (casemaker.js)
+            curl -sfL "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$tag/case/fm1buddy-case.scad" -o site/fw/fm1buddy-case.scad || true
             jq -n --arg tag "$tag" '{tag: $tag, cases: $ARGS.positional}' --args $(cd site/fw && ls fm1buddy-case-*.stl 2>/dev/null) > site/fw/version.json
             jq -n --arg v "$tag" '{name: "fm1buddy", version: $v, new_install_prompt_erase: true,
               builds: [{chipFamily: "ESP32-S3", parts: [{path: "fm1buddy-cyd-s3.bin", offset: 0}]}]}' > site/fw/manifest.json

@@ -1,5 +1,5 @@
-# Builds the CYD-S3's firmware and the case's STLs. Every run keeps them as a "firmware" artifact; tags (v0.2) also
-# get a release with them attached.
+# Builds the CYD-S3's firmware, and the case's STLs (to check the OpenSCAD file still renders: the page makes them
+# itself). Every run keeps them as artifacts; tags (v0.2) also get a release with the firmware attached.
 name: build
 on:
   push:
@@ -45,8 +45,3 @@ jobs:
           name: cases
           path: build/case/*.stl
           if-no-files-found: error
-      - uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/v')
-        with:
-          files: build/case/*.stl
-          fail_on_unmatched_files: true

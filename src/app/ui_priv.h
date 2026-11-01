@@ -74,6 +74,10 @@ enum Start { START_FIRMWARE,
              STARTS };
 extern const char* const START_NAMES[STARTS];
 int startPage();
+// going to sleep after this many minutes with nothing going on (0: never; Settings > Sleep)
+#define SLEEPS 4
+extern const uint8_t SLEEP_MINUTES[SLEEPS];
+int sleepMinutes();
 void soundsPage(lv_obj_t* page);
 void recordPage(lv_obj_t* page);       // the FM-1's USB audio to the SD card
 int soundsDev();                       // the device picked there

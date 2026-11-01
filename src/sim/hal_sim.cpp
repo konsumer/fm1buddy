@@ -162,6 +162,10 @@ void hal::save(const char* key, const void* p, size_t n) {
 
 void hal::backlight(uint8_t) {}
 
+void hal::sleep() {
+  hal::log("sim: the board would sleep now, until the screen is touched");
+}
+
 bool hal::wifiScan(std::vector<Ap>& out) {
   std::this_thread::sleep_for(std::chrono::milliseconds(1200));
   out = {{"Studio", -48, false}, {"Neighbours 5G", -71, false}, {"Cafe", -80, true}};

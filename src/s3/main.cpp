@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <TFT_eSPI.h>
 #include <Wire.h>
+#include <driver/gpio.h>
+#include <esp_sleep.h>
 #include <lvgl.h>
 
 #include "board.h"
@@ -28,6 +30,8 @@ static void flush(lv_display_t* d, const lv_area_t* a, uint8_t* px) {
 }
 
 static void touchBegin() {
+  gpio_hold_dis((gpio_num_t)TOUCH_RST);  // (held through a sleep: hal::sleep)
+  gpio_hold_dis((gpio_num_t)TFT_BL);
   pinMode(TOUCH_INT, INPUT);
   pinMode(TOUCH_RST, OUTPUT);
   digitalWrite(TOUCH_RST, 0);
@@ -137,6 +141,28 @@ static void readTouch(lv_indev_t*, lv_indev_data_t* data) {
   data->point.y = ly;
 }
 
+// deep sleep until a finger is on the panel: its INT goes low while one is (in polling mode, G_MODE 0). The panel
+// stays powered and out of reset (its RST held high), the backlight held off, the screen's controller asleep
+void hal::sleep() {
+  hal::log("sleep: until the screen is touched");
+  board::logNow();
+  Wire.beginTransmission(FT6336);
+  Wire.write(0xA4);
+  Wire.write(0);
+  Wire.endTransmission();
+  tft.writecommand(0x28);  // display off
+  tft.writecommand(0x10);  // sleep in
+  ledcDetach(TFT_BL);
+  pinMode(TFT_BL, OUTPUT);
+  digitalWrite(TFT_BL, !TFT_BACKLIGHT_ON);
+  gpio_hold_en((gpio_num_t)TFT_BL);
+  gpio_hold_en((gpio_num_t)TOUCH_RST);
+  gpio_deep_sleep_hold_en();
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)TOUCH_INT, 0);
+  Serial.flush();
+  esp_deep_sleep_start();
+}
+
 static uint32_t tick() {
   return millis();
 }
@@ -145,6 +171,9 @@ void setup() {
   Serial.begin(115200);
   board::begin();
 
+  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0) {
+    hal::log("boot: woken by a touch");
+  }
   hal::log("boot: screen");
   tft.init();
   tft.setRotation(1);
@@ -180,7 +209,7 @@ void setup() {
 }
 
 // the serial console (tools/s3.py): "shot" sends the screen (SHOT w h, then w*h RGB565 pixels, little-endian),
-// "tap x y" touches it for a moment, "drag x1 y1 x2 y2" slides a finger across it, "log" prints the SD card's log, "cat path" / "ls path" a file or folder on it, "host [script]" restarts as the USB host for 40 s (and runs script: board.h), "crash" crashes (the next start logs it), "disk" restarts as a USB disk (back once the computer ejects it), "usbmidi" restarts as USB MIDI for the
+// "tap x y" touches it for a moment, "drag x1 y1 x2 y2" slides a finger across it, "log" prints the SD card's log, "cat path" / "ls path" a file or folder on it, "host [script]" restarts as the USB host for 40 s (and runs script: board.h), "crash" crashes (the next start logs it), "disk" restarts as a USB disk (back once the computer ejects it), "sleep" sleeps (hal::sleep), "usbmidi" restarts as USB MIDI for the
 // computer (until it sends the SysEx that brings the serial port back: computer_s3.cpp)
 static void console() {
   static char line[160];
@@ -213,6 +242,8 @@ static void console() {
       } else {
         Serial.println(hal::sd() ? "BUSY" : "NOSD");
       }
+    } else if (!strcmp(line, "sleep")) {
+      hal::sleep();
     } else if (!strcmp(line, "usbmidi")) {
       hal::computerMidiSet(true);  // (restarts as USB MIDI for this computer)
     } else if (!strcmp(line, "shot")) {

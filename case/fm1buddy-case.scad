@@ -1,7 +1,7 @@
 // The fm1buddy case for the CYD-S3 (Freenove FNK0104B, ESP32-S3 2.8"): snap-fit, no screws, printed without supports
 // (base: open side up; lid: top side down).
 //
-//   battery  room for a flat LiPo under the board, and a hole for a small slide switch
+//   battery  room for a flat LiPo under the board (switch_hole: and a hole for a slide switch in its lead)
 //   part     base, lid, or preview (the case open, with a stand-in for the board)
 //
 // openscad -D 'part="lid"' -o lid.stl fm1buddy-case.scad (tools/cases.sh makes them all)
@@ -24,7 +24,7 @@ lip_h = 4;
 
 /* [Battery] */
 bat = [36, 29, 4.75];  // Adafruit 500 mAh (1578); 1200 mAh (258): [34, 62, 5]; 2000 mAh (2011): [60, 36, 7]
-switch_hole = [9, 4.2];  // a mini slide switch (SS12D00), in line with the battery
+switch_hole = [0, 0];  // none (the board sleeps by itself); [9, 4.2]: a mini slide switch (SS12D00) in its lead
 
 $fn = 48;
 LID_COLOR = "#ff8a3d";   // the installer page's orange

@@ -10,6 +10,7 @@
 #include "jobs.h"
 #include "midi.h"
 #include "play.h"
+#include "record.h"
 #include "src/themes/lv_theme_private.h"
 #include "ui_priv.h"
 
@@ -397,6 +398,74 @@ static void logCounts() {
   }
 }
 
+// ---------------------------------------------------------------------------------------------- sleep ---
+// with nothing going on for a while (Settings > Sleep), the screen dims, and 30 s later the board sleeps until it's
+// touched. Never while a job runs, a take records, the clock plays, a computer is on the USB port, or a device is on
+// the hub or on Bluetooth (the hub on the charger, or someone playing)
+const uint8_t ui::SLEEP_MINUTES[SLEEPS] = {0, 2, 5, 15};
+#define DIM_MS 30000
+
+int ui::sleepMinutes() {
+  uint8_t m = 0;  // never, unless it's asked for
+  hal::load("sleep", &m, 1);
+  return m;
+}
+
+static bool busy() {
+  if (jobs::running || record::recording() || play::playing() || hal::onComputer() || hal::diskMode() ||
+      hal::recoveryMode()) {
+    return true;
+  }
+  midi::Dev d;
+  for (int i = 0; i < MIDI_TOUCH; i++) {
+    if (midi::dev(i, d)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static lv_obj_t* dimmed;  // over everything while it's dim: the touch that wakes it does nothing else
+
+static void undim() {
+  if (dimmed) {
+    lv_obj_delete(dimmed);
+    dimmed = 0;
+    hal::backlight(settings.brightness);
+  }
+}
+
+static void sleepWatch() {
+  static uint32_t quietSince = hal::millis();
+  static int minutes = sleepMinutes();
+  static uint32_t checked;
+  if (hal::millis() - checked > 1000) {  // (the setting, now and then)
+    checked = hal::millis();
+    minutes = sleepMinutes();
+  }
+  if (!minutes || busy() || lv_display_get_inactive_time(0) < 1000) {
+    quietSince = hal::millis();
+  }
+  uint32_t quiet = hal::millis() - quietSince, after = minutes * 60000u;
+  if (!minutes || quiet < after - DIM_MS) {
+    undim();
+    return;
+  }
+  if (!dimmed) {
+    hal::log("sleep: dim, sleeping in %d s", DIM_MS / 1000);
+    hal::backlight(settings.brightness / 5 > 2 ? settings.brightness / 5 : 2);
+    dimmed = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(dimmed);
+    lv_obj_set_size(dimmed, LV_PCT(100), LV_PCT(100));
+    lv_obj_add_flag(dimmed, LV_OBJ_FLAG_CLICKABLE);
+  }
+  if (quiet >= after) {
+    hal::log("sleep: %d min with nothing going on", minutes);
+    quietSince = hal::millis();  // (the simulator doesn't sleep)
+    hal::sleep();
+  }
+}
+
 static void watch(lv_timer_t*) {
   if (jobs::bluetoothPaused()) {
     toast("Bluetooth MIDI is paused: Wi-Fi is on.");
@@ -426,6 +495,7 @@ static void watch(lv_timer_t*) {
     tick();
   }
   railStatus();
+  sleepWatch();
 }
 
 const char* const ui::START_NAMES[STARTS] = {"Firmware", "MIDI", "Mapping", "Touch controller", "Sounds"};

@@ -15,6 +15,7 @@ static lv_obj_t *ta, *msg, *scanBtn, *scanSpin, *nets;
 
 static void themePage(lv_obj_t* page);
 static void startOnPage(lv_obj_t* page);
+static void sleepPage(lv_obj_t* page);
 static void computerPage(lv_obj_t* page);
 static void aboutPage(lv_obj_t* page);
 static void passwordPage(lv_obj_t* page);
@@ -60,6 +61,9 @@ void ui::settingsPage(lv_obj_t* page) {
   menuRow(body, LV_SYMBOL_WIFI "  Wi-Fi", settings.ssid[0] ? settings.ssid : "not set", wifiPage);
   menuRow(body, LV_SYMBOL_IMAGE "  Theme", t.name, themePage);
   menuRow(body, LV_SYMBOL_HOME "  Start on", START_NAMES[startPage()], startOnPage);
+  char sl[16];
+  snprintf(sl, sizeof sl, sleepMinutes() ? "after %d min" : "never", sleepMinutes());
+  menuRow(body, LV_SYMBOL_POWER "  Sleep", sl, sleepPage);
   hal::TouchCal c;
   menuRow(body, LV_SYMBOL_EDIT "  Touch", hal::load("touchcal", &c, sizeof c) ? "calibrated" : "calibrate",
           touchCalPage);
@@ -488,6 +492,39 @@ static void startOnPage(lv_obj_t* page) {
   lv_obj_t* l = label(body,
                       "What it shows after power-up. To play from the start, switch MIDI routing's "
                       "\"Start it on power-up\" on too (on the MIDI page).",
+                      &lv_font_montserrat_12, t.dim);
+  lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+  lv_obj_set_width(l, LV_PCT(100));
+  lv_obj_set_style_pad_top(l, 6, 0);
+}
+
+// ---------------------------------------------------------------------------------------------- sleep ---
+static void sleepPicked(lv_event_t* e) {
+  uint8_t m = (uint8_t)(intptr_t)lv_event_get_user_data(e);
+  hal::save("sleep", &m, 1);
+  go(settingsPage);
+}
+
+static void sleepPage(lv_obj_t* page) {
+  const Theme& t = theme();
+  header(page, "Sleep", settingsPage);
+  lv_obj_t* body = scroller(page);
+  int now = sleepMinutes();
+  for (int i = 0; i < SLEEPS; i++) {
+    int m = SLEEP_MINUTES[i];
+    char s[16];
+    snprintf(s, sizeof s, m ? "After %d min" : "Never", m);
+    lv_obj_t* r = listRow(body, sleepPicked, (void*)(intptr_t)m);
+    lv_obj_t* l = label(r, s, &lv_font_montserrat_16, m == now ? t.accent : t.text);
+    lv_obj_set_flex_grow(l, 1);
+    if (m == now) {
+      label(r, LV_SYMBOL_OK, &lv_font_montserrat_16, t.accent);
+    }
+  }
+  lv_obj_t* l = label(body,
+                      "For a battery: with nothing going on, the screen dims, and 30 s later it sleeps. Touch the "
+                      "screen to wake it (it starts again). It stays on while something is on the hub or on "
+                      "Bluetooth, the clock plays, it records or works on something, or a computer is on it.",
                       &lv_font_montserrat_12, t.dim);
   lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(l, LV_PCT(100));

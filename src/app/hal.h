@@ -29,6 +29,9 @@ bool load(const char* key, void* p, size_t n);
 void save(const char* key, const void* p, size_t n);
 
 void backlight(uint8_t percent);
+// the board off until the screen is touched (deep sleep): then it starts again, from nothing (the simulator only says
+// so). For a battery
+void sleep();
 
 // Wi-Fi is off unless a job needs it
 struct Ap {

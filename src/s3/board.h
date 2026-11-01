@@ -17,6 +17,7 @@ void loop();
 void hostTestStart(const char* script);
 const char* hostTestScript();
 void printLog();
+void logNow();                     // what the log has waiting, written now (before a sleep)
 void printFile(const char* path);  // a file on the SD card ("fm1buddy/installs/3.txt"), for "cat"
 void printDir(const char* path);   // a folder on the SD card, for "ls"
 // USB audio in (uac_s3.cpp): the host task's turn; and the MIDI device of a USB address (usb_s3.cpp), -1 if none

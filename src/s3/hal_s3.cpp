@@ -121,6 +121,10 @@ static void flushLog() {
   }
 }
 
+void board::logNow() {
+  flushLog();
+}
+
 void hal::psramFirst(bool on) {
   heap_caps_malloc_extmem_enable(on ? 0 : CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL);  // (as the Arduino core has it)
 }

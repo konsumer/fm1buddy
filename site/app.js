@@ -37,10 +37,7 @@ async function release() {
   try {
     const v = await json(FW.version)
     here = v.tag
-    cases(v.cases || [])
-  } catch (_) {
-    cases([])
-  }
+  } catch (_) {}
   let latest = null
   try {
     latest = await json(`https://api.github.com/repos/${REPO}/releases/latest`)
@@ -59,22 +56,6 @@ async function release() {
   el.innerHTML = `Version <a href="${url}">${here}</a>${date}`
   if (latest && latest.tag_name !== here) {
     el.innerHTML += ` · a newer one, <a href="${latest.html_url}">${latest.tag_name}</a>, is on its way here`
-  }
-}
-
-// ------------------------------------------------------------------------------------------- cases ---
-const SCAD = `https://github.com/${REPO}/blob/main/case/fm1buddy-case.scad`
-
-function cases(files) {
-  for (const box of $$('.case-links')) {
-    const config = box.dataset.case || box.closest('.case').dataset.case
-    const has = (name) => files.includes(`fm1buddy-case-${name}.stl`)
-    const link = (name, label) => `<a class="button${label.startsWith('With') ? ' secondary' : ''}" href="fw/fm1buddy-case-${name}.stl" download>${label}</a>`
-    if (!has(`${config}-base`)) {
-      box.innerHTML = `<span class="note">The STLs come with the next release; or make them from <a href="${SCAD}">the OpenSCAD file</a>.</span>`
-      continue
-    }
-    box.innerHTML = [link(`${config}-base`, 'Base'), link(`${config}-lid`, 'Lid'), has(`${config}-battery-base`) ? link(`${config}-battery-base`, 'With a battery: base') : '', has(`${config}-battery-lid`) ? link(`${config}-battery-lid`, 'With a battery: lid') : ''].join(' ')
   }
 }
 

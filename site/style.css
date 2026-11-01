@@ -208,23 +208,37 @@ td {
   display: flex;
   flex-wrap: wrap;
   gap: 16px;
-  align-items: center;
+  align-items: flex-start;
 }
 
-.case img {
+.case-view {
+  position: sticky;
+  top: 8px;
+  flex: 1 1 300px;
+  max-width: 420px;
+}
+
+.case-view img,
+.case-view canvas {
+  display: block;
   width: 100%;
-  max-width: 300px;
   height: auto;
+  aspect-ratio: 9 / 7;
+  touch-action: none;
+  cursor: grab;
 }
 
-.case > div {
-  flex: 1 1 260px;
+.case-view img[hidden],
+.case-view canvas[hidden] {
+  display: none;
 }
 
-.case-links .button {
+.case > div:not(.case-view) {
+  flex: 1 1 280px;
+}
+
+.case .actions .button {
   margin: 0 6px 6px 0;
-  padding: 8px 14px;
-  font-size: 0.9rem;
 }
 
 footer {
@@ -471,14 +485,6 @@ body[data-tab='map'] .video {
 }
 
 /* the battery case maker */
-.maker {
-  margin-top: 16px;
-  padding: 4px 16px 8px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel);
-}
-
 .maker-presets {
   display: flex;
   flex-wrap: wrap;
@@ -539,6 +545,8 @@ body[data-tab='map'] .video {
   font-size: 0.9rem;
 }
 
-.maker-out .button {
-  margin-left: 6px;
+@media (max-width: 640px) {
+  .case-view {
+    position: static;
+  }
 }

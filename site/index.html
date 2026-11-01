@@ -6,6 +6,9 @@
     <title>fm1buddy</title>
     <meta name="description" content="Install fm1buddy on the CYD-S3 touch screen, from the browser." />
     <link rel="stylesheet" href="style.css" />
+    <script type="importmap">
+      { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }
+    </script>
     <script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
   </head>
   <body>
@@ -72,32 +75,30 @@ FM-1 ───────┘                 │
             <li><strong>Settings</strong> (the gear): Wi-Fi, the color theme, what it starts on (firmware, MIDI, the mapping or the touch controller), the brightness. <em>On a computer</em>: plugged straight into a computer, the board is its serial port (for flashing), or with <em>USB MIDI</em> a MIDI device, <em>fm1buddy</em>, in any music app: the touch controller, the clock and Bluetooth MIDI devices play it, and it plays them. To flash it then, hold <strong>BOOT</strong> as you plug it in. <em>Back up the FM-1</em> saves all of its flash to the SD card. <em>Recover the FM-1</em> is for one that doesn't start any more: pick a firmware or a backup, switch the FM-1 off, plug it straight into the adapter instead of the hub (keep the charger in), tap <em>Start</em>, and switch the FM-1 on. fm1buddy wakes the boot loader in its chip (no firmware can break it), saves its flash as it was, and writes the firmware back.</li>
           </ul>
           <h2>A case</h2>
-          <div class="case" data-case="s3">
-            <img src="case/s3.png" alt="The case for the CYD-S3" width="450" height="350" loading="lazy" />
+          <div class="case" id="maker">
+            <div class="case-view">
+              <img src="case/s3.png" alt="The case for the CYD-S3" width="450" height="350" loading="lazy" />
+              <canvas hidden aria-label="The case in 3D: drag to turn it"></canvas>
+            </div>
             <div>
               <p>Print the base open side up and the lid flat side down, without supports (PLA or PETG). The lid snaps on and holds the board down. The holes in the bottom reach BOOT and RESET, for a paperclip; the SD card goes in at the side.</p>
-              <p class="note">The battery case has room for a flat LiPo up to 68 &times; 52 &times; 11 mm under the board (a 3000 mAh cell: most of a day on), on its <code>BAT</code> socket (MX1.25, 2 pins). Red must go to + on the board: some batteries come wired the other way, so check before plugging it in. It stays connected, so it charges whenever the charger is in, and the board can sleep by itself when nothing is going on: pick how soon in Settings &gt; Sleep (it's off at first), and touch the screen to wake it.</p>
-              <div class="actions case-links"></div>
+              <p class="note">With a battery, it goes under the board, on its <code>BAT</code> socket (MX1.25, 2 pins). Pick yours, or type its size (the cell's own, from its listing: room is added), and the base is made for it, here in your browser. Red must go to + on the board: some batteries come wired the other way, so check before plugging it in. It stays connected, so it charges whenever the charger is in, and the board can sleep by itself when nothing is going on: pick how soon in Settings &gt; Sleep (it's off at first), and touch the screen to wake it.</p>
+              <div class="maker-presets"></div>
+              <div class="maker-size">
+                <label>Length <input name="x" type="number" min="10" max="70" step="0.5" /></label>
+                <span>&times;</span>
+                <label>Width <input name="y" type="number" min="10" max="51" step="0.5" /></label>
+                <span>&times;</span>
+                <label>Thickness <input name="z" type="number" min="2" max="25" step="0.5" /></label>
+                <span>mm</span>
+              </div>
+              <label class="maker-switch"><input name="sw" type="checkbox" /> A hole for a slide switch in the battery's lead (9 &times; 4.2 mm, like an SS12D00)</label>
+              <div class="actions">
+                <a class="button maker-base" aria-disabled="true">Base</a>
+                <a class="button secondary maker-lid" aria-disabled="true" download="fm1buddy-case-s3-lid.stl">Lid</a>
+              </div>
+              <p class="note maker-status"></p>
             </div>
-          </div>
-          <div class="maker" id="maker">
-            <h3>For your battery</h3>
-            <p class="note">The battery base above has room for one up to 68 &times; 52 &times; 11 mm. For a snug fit, pick yours or type its size (the cell's own, from its listing: room is added), and make a base for it here, in your browser. The lid is the same for all of them.</p>
-            <div class="maker-presets"></div>
-            <div class="maker-size">
-              <label>Length <input name="x" type="number" min="10" max="70" step="0.5" /></label>
-              <span>&times;</span>
-              <label>Width <input name="y" type="number" min="10" max="51" step="0.5" /></label>
-              <span>&times;</span>
-              <label>Thickness <input name="z" type="number" min="2" max="25" step="0.5" /></label>
-              <span>mm</span>
-            </div>
-            <label class="maker-switch"><input name="sw" type="checkbox" /> A hole for a slide switch in the battery's lead (9 &times; 4.2 mm, like an SS12D00)</label>
-            <div class="actions">
-              <button class="button maker-go" type="button">Make the base</button>
-              <span class="maker-out"></span>
-            </div>
-            <p class="note maker-status"></p>
           </div>
           <h2>What it can't do</h2>
           <ul>

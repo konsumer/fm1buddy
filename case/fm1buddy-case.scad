@@ -135,6 +135,10 @@ module stand_in() {
   translate([8.4, 0, s_bz + PCB]) color("#111") cube([69.2, S3.y, S3_FRONT - 0.2]);
   translate([-0.3, S3_USB.x - 4.5, s_bz - S3_USB.y]) color("#aaa") cube([7.3, 9, S3_USB.y]);
   translate([S3_SD - 7, S3.y - 15, s_bz - 1.9]) color("#bbb") cube([14, 15, 1.9]);
+  if (part != "view_board") battery_in();
+}
+
+module battery_in() {
   if (battery) translate([s_bat.x, s_bat.y, 0.3]) color("silver") cube(bat);
 }
 
@@ -155,4 +159,8 @@ cut() {
     stand_in();
     translate([0, 0, s_inner_h + 25]) color(LID_COLOR) s3_lid();
   }
+  // the preview's pieces one at a time (an STL has no colors), for the installer page's 3D view (casemaker.js)
+  if (part == "view_lid") translate([0, 0, s_inner_h + 25]) s3_lid();
+  if (part == "view_board") stand_in();
+  if (part == "view_battery") battery_in();
 }

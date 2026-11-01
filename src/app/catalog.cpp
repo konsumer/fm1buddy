@@ -113,10 +113,117 @@ static void readEntry(JsonObjectConst e, Firmware& f) {
 // the list in the PSRAM (hal::psramFirst): read, it's 80+ KB of small blocks while it's made, and 40+ KB kept
 static bool parseHubIn(std::vector<Firmware>& out, std::string& updated, std::string& err);
 
+// ------------------------------------------------------------------------------------------ HUB_LIST ---
+// the list as the board needs it: a line "fm1buddy hub 1" and when the list was made, then a line a firmware, its
+// fields between tabs
+static const char* const LIST_HEAD = "fm1buddy hub 1";
+
+static void field(FILE* f, const std::string& v, char end = '\t') {
+  for (char c : v) {
+    fputc(c == '\t' || c == '\n' || c == '\r' ? ' ' : c, f);
+  }
+  fputc(end, f);
+}
+
+static void writeList(const std::vector<Firmware>& list, const std::string& updated) {
+  std::string p = catalog::path(HUB_LIST);
+  FILE* f = fopen((p + ".part").c_str(), "w");
+  if (!f) {
+    return;
+  }
+  fprintf(f, "%s\t", LIST_HEAD);
+  field(f, updated, '\n');
+  for (const Firmware& e : list) {
+    for (const std::string* v : {&e.name, &e.author, &e.version, &e.date, &e.what, &e.pkg, &e.file, &e.product, &e.sha256}) {
+      field(f, *v);
+    }
+    fprintf(f, "%lu\t%c%c%c%c\t", (unsigned long)e.size, e.beta ? 'b' : '-', e.stock ? 's' : '-', e.keyboard ? 'k' : '-',
+            e.mouse ? 'm' : '-');
+    std::string kinds;
+    for (const std::string& k : e.kinds) {
+      kinds += (kinds.empty() ? "" : ",") + k;
+    }
+    field(f, kinds, '\n');
+  }
+  bool ok = !ferror(f);
+  fclose(f);
+  if (ok) {
+    remove(p.c_str());
+    rename((p + ".part").c_str(), p.c_str());
+  }
+}
+
+// line's fields between tabs
+static std::vector<std::string> fields(const char* line, const char* end) {
+  std::vector<std::string> out;
+  const char* a = line;
+  for (const char* c = line;; c++) {
+    if (c == end || *c == '\t') {
+      out.emplace_back(a, c);
+      a = c + 1;
+      if (c == end) {
+        return out;
+      }
+    }
+  }
+}
+
+bool catalog::loadHub(std::vector<Firmware>& out, std::string& updated) {
+  std::string text;
+  if (!readAll(catalog::path(HUB_LIST), text)) {
+    return false;
+  }
+  const char* p = text.c_str();
+  const char* end = p + text.size();
+  const char* nl = (const char*)memchr(p, '\n', end - p);
+  if (!nl) {
+    return false;
+  }
+  std::vector<std::string> head = fields(p, nl);
+  if (head.size() != 2 || head[0] != LIST_HEAD) {
+    return false;
+  }
+  hal::psramFirst(true);
+  std::vector<Firmware> list;
+  for (p = nl + 1; p < end; p = nl + 1) {
+    nl = (const char*)memchr(p, '\n', end - p);
+    if (!nl) {
+      nl = end;
+    }
+    std::vector<std::string> v = fields(p, nl);
+    if (v.size() != 12) {
+      continue;
+    }
+    Firmware f;
+    f.name = v[0], f.author = v[1], f.version = v[2], f.date = v[3], f.what = v[4];
+    f.pkg = v[5], f.file = v[6], f.product = v[7], f.sha256 = v[8];
+    f.size = strtoul(v[9].c_str(), 0, 10);
+    f.beta = v[10].find('b') != std::string::npos;
+    f.stock = v[10].find('s') != std::string::npos;
+    f.keyboard = v[10].find('k') != std::string::npos;
+    f.mouse = v[10].find('m') != std::string::npos;
+    for (size_t a = 0; a < v[11].size();) {
+      size_t c = v[11].find(',', a);
+      c = c == std::string::npos ? v[11].size() : c;
+      f.kinds.push_back(v[11].substr(a, c - a));
+      a = c + 1;
+    }
+    list.push_back(std::move(f));
+  }
+  out.swap(list);
+  hal::psramFirst(false);
+  updated = head[1];
+  return true;
+}
+
 bool catalog::parseHub(std::vector<Firmware>& out, std::string& updated, std::string& err) {
   hal::psramFirst(true);
   bool ok = parseHubIn(out, updated, err);
   hal::psramFirst(false);
+  if (ok) {
+    writeList(out, updated);
+    remove(catalog::path(HUB_CACHE).c_str());  // (only the list is kept)
+  }
   return ok;
 }
 

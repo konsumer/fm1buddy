@@ -162,6 +162,12 @@ void hal::save(const char* key, const void* p, size_t n) {
 
 void hal::backlight(uint8_t) {}
 
+// FM1BUDDY_BATTERY=3800 (mV) pretends there's a battery
+uint32_t hal::batteryMv() {
+  const char* v = getenv("FM1BUDDY_BATTERY");
+  return v ? (uint32_t)atoi(v) : 4120;
+}
+
 void hal::sleep() {
   hal::log("sim: the board would sleep now, until the screen is touched");
 }

@@ -10,8 +10,9 @@
 #define HUB_SITE "https://mutant.cloud/"
 #define FW_DIR "/fm1"
 #define DATA_DIR "/fm1buddy"
-#define HUB_CACHE DATA_DIR "/hub.json"
+#define HUB_CACHE DATA_DIR "/hub.json"  // the Hub's list as it comes, until parseHub has read it
 #define HUB_ETAG DATA_DIR "/hub.etag"
+#define HUB_LIST DATA_DIR "/hub.txt"       // the list as the board needs it (parseHub writes it): read in a moment
 #define INSTALLS_DIR DATA_DIR "/installs"  // a record of each install
 
 struct Firmware {
@@ -33,8 +34,11 @@ extern std::string hubUpdated;  // when the Hub's list was made: "2026-10-22 05:
 
 // a path on the SD card ("/fm1/x.fwsc" -> "/sdcard/fm1/x.fwsc"), "" without a card
 std::string path(const std::string& p);
-// read the Hub's list (and the SMK-37's) from the SD card into out: false (err says why) if it isn't there or doesn't read
+// read the Hub's list as it came (HUB_CACHE: seconds, it's 400+ KB of JSON) into out, keep it as HUB_LIST and remove
+// HUB_CACHE: false (err says why) if it isn't there or doesn't read
 bool parseHub(std::vector<Firmware>& out, std::string& updated, std::string& err);
+// the list from HUB_LIST, in a moment: false if it isn't there
+bool loadHub(std::vector<Firmware>& out, std::string& updated);
 // the files in /fm1, with what the Hub's list knows about them; marks the Hub's that are there
 void scanSd();
 // the device a package is for, from its own header ("FM-1_974"), "" if it isn't a package

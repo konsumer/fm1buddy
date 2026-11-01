@@ -396,6 +396,10 @@ void hal::save(const char* key, const void* p, size_t n) {
   prefs.end();
 }
 
+uint32_t hal::batteryMv() {
+  return analogReadMilliVolts(9) * 2;  // (GPIO9, the battery halved by the board's divider)
+}
+
 void hal::backlight(uint8_t percent) {
   static bool attached;
   if (!attached) {

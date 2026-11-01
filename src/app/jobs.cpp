@@ -148,7 +148,8 @@ static void hubJob(void*) {
   step = FETCHING;
   std::string etagPath = catalog::path(HUB_ETAG), cache = catalog::path(HUB_CACHE);
   struct stat st;
-  std::string etag = stat(cache.c_str(), &st) ? "" : readText(etagPath);
+  // (the list it's from is asked for again only if it's kept: else the whole list comes)
+  std::string etag = stat(catalog::path(HUB_LIST).c_str(), &st) ? "" : readText(etagPath);
   hal::logRam("before the list");
   hal::log("job: getting the list (etag %s)", etag.c_str());
   int code = hal::get(HUB_SITE "catalog.json", cache.c_str(), &etag, progress, error);
@@ -159,14 +160,19 @@ static void hubJob(void*) {
     }
     return finish(false);
   }
-  if (code == 200) {
+  step = READING;
+  bool ok;
+  if (code == 304) {  // the same list: the one kept
+    ok = catalog::loadHub(hub, hubUpdated);
+    if (!ok) {
+      error = "The Hub's list on the SD card didn't read.";
+    }
+  } else if ((ok = catalog::parseHub(hub, hubUpdated, error))) {
     if (FILE* f = fopen(etagPath.c_str(), "w")) {
       fputs(etag.c_str(), f);
       fclose(f);
     }
   }
-  step = READING;
-  bool ok = catalog::parseHub(hub, hubUpdated, error);
   hal::logRam("the list read");
   finish(ok);
 }

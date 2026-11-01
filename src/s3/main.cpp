@@ -176,6 +176,7 @@ void setup() {
   }
   hal::log("boot: screen");
   tft.init();
+  hal::backlight(0);  // (TFT_eSPI lit it: dark until the app's first screen is drawn, ui::begin)
   tft.setRotation(1);
   tft.fillScreen(TFT_BLACK);
   touchBegin();
@@ -204,7 +205,7 @@ void setup() {
   if (!hal::recoveryMode()) {
     board::usbBegin();
   }
-  hal::log("fm1buddy: up, %u KB internal RAM free, %u KB PSRAM free",
+  hal::log("fm1buddy: up in %u ms, %u KB internal RAM free, %u KB PSRAM free", (unsigned)millis(),
            (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024), (unsigned)(ESP.getFreePsram() / 1024));
 }
 
@@ -242,6 +243,18 @@ static void console() {
       } else {
         Serial.println(hal::sd() ? "BUSY" : "NOSD");
       }
+    } else if (!strcmp(line, "bat")) {
+      // the battery's voltage (GPIO9, halved by the board): 40 readings over 2 s, in mV at the pin
+      int lo = 99999, hi = 0;
+      long sum = 0;
+      for (int i = 0; i < 40; i++) {
+        int mv = analogReadMilliVolts(9);
+        lo = min(lo, mv);
+        hi = max(hi, mv);
+        sum += mv;
+        delay(50);
+      }
+      Serial.printf("BAT pin %d..%d mV, avg %ld (battery about %ld mV)\n", lo, hi, sum / 40, sum / 20);
     } else if (!strcmp(line, "sleep")) {
       hal::sleep();
     } else if (!strcmp(line, "usbmidi")) {

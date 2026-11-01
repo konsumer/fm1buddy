@@ -4,6 +4,8 @@
 #include <ctype.h>
 #include <string.h>
 
+#include <atomic>
+
 #include "catalog.h"
 #include "fm1.h"
 #include "hal.h"
@@ -21,7 +23,7 @@ void (*jobDone)();
 
 using namespace ui;
 
-static lv_obj_t *rail, *pageObj, *tabs[TABS], *stSd, *stWifi, *stBt, *stFm1;
+static lv_obj_t *rail, *pageObj, *tabs[TABS], *stSd, *stWifi, *stBt, *stFm1, *stPower, *stBat, *stBolt;
 static Tab tab = FIRMWARE;
 static Builder current = firmwarePage;
 static uint32_t seenFinished;  // jobs::finished, as last seen
@@ -367,7 +369,16 @@ static void build() {
   stWifi = label(radios, LV_SYMBOL_WIFI, &lv_font_montserrat_16, t.dim);
   stBt = label(radios, LV_SYMBOL_BLUETOOTH, &lv_font_montserrat_16, t.dim);
   lv_obj_set_style_opa(stBt, LV_OPA_TRANSP, 0);
-  stSd = label(rail, LV_SYMBOL_SD_CARD, &lv_font_montserrat_16, t.dim);
+  stPower = ui::box(rail, LV_FLEX_FLOW_ROW);  // the SD card, and the battery if there's one to show (batteryWatch)
+  lv_obj_set_width(stPower, RAIL_W);
+  lv_obj_set_flex_align(stPower, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(stPower, 3, 0);
+  stSd = label(stPower, LV_SYMBOL_SD_CARD, &lv_font_montserrat_16, t.dim);
+  stBat = label(stPower, LV_SYMBOL_BATTERY_FULL, &lv_font_montserrat_12, t.dim);
+  stBolt = label(stPower, LV_SYMBOL_CHARGE, &lv_font_montserrat_12, t.accent);
+  lv_obj_add_flag(stBat, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(stBolt, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_set_style_margin_left(stBolt, -2, 0);
   stFm1 = label(rail, "NO", &lv_font_montserrat_12, t.dim);
 
   pageObj = ui::box(scr);
@@ -466,6 +477,116 @@ static void sleepWatch() {
   }
 }
 
+// --------------------------------------------------------------------------------------------- battery ---
+// shown only while there's a battery to show. With none, the charger holds the battery socket at about 4.12 V (measured
+// on a CYD-S3); a battery under the board's load reads below 4.05 V. So below that, a battery runs it, or one that
+// isn't full is charging (the voltage rising: a bolt). Above: no battery, or a full one on the charger: nothing shown
+#define BAT_SHOW 4050
+#define BAT_HIDE 4100
+
+// a LiPo under load: mV to percent
+static int batteryPercent(float mv) {
+  static const int CURVE[][2] = {{4080, 100}, {4000, 85}, {3900, 70}, {3800, 50}, {3700, 30}, {3600, 15}, {3500, 5}, {3400, 0}};
+  if (mv >= CURVE[0][0]) {
+    return 100;
+  }
+  for (int i = 1; i < 8; i++) {
+    if (mv >= CURVE[i][0]) {
+      return CURVE[i][1] + (int)((mv - CURVE[i][0]) * (CURVE[i - 1][1] - CURVE[i][1]) / (CURVE[i - 1][0] - CURVE[i][0]));
+    }
+  }
+  return 0;
+}
+
+static void batteryWatch() {
+  static uint32_t at, trendAt, loggedAt;
+  static float avg, before;
+  static bool shown, charging;
+  if (hal::millis() - at < 1000) {
+    return;  // (once a second)
+  }
+  at = hal::millis();
+  uint32_t mv = hal::batteryMv();
+  if (!mv) {
+    return;
+  }
+  avg = avg ? avg * 0.9f + mv * 0.1f : mv;
+  if (hal::millis() - trendAt > 60000) {  // charging: risen over the last minute
+    charging = before && avg - before > 8;
+    before = avg;
+    trendAt = hal::millis();
+  }
+  bool was = shown;
+  shown = shown ? avg < BAT_HIDE : avg < BAT_SHOW;
+  if (shown != was || hal::millis() - loggedAt > 300000) {
+    hal::log("battery: %d mV, %d%%%s%s", (int)avg, batteryPercent(avg), charging ? ", charging" : "", shown ? "" : " (not shown)");
+    loggedAt = hal::millis();
+  }
+  if (!shown) {
+    lv_obj_add_flag(stBat, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(stBolt, LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+  int pct = batteryPercent(avg);
+  const char* glyph = pct > 80 ? LV_SYMBOL_BATTERY_FULL : pct > 55 ? LV_SYMBOL_BATTERY_3
+                                                      : pct > 30   ? LV_SYMBOL_BATTERY_2
+                                                      : pct > 10   ? LV_SYMBOL_BATTERY_1
+                                                                   : LV_SYMBOL_BATTERY_EMPTY;
+  if (strcmp(lv_label_get_text(stBat), glyph)) {
+    lv_label_set_text(stBat, glyph);
+  }
+  const Theme& t = theme();
+  lv_obj_set_style_text_color(stBat, color(pct <= 10 && !charging ? t.knob[0] : t.dim), 0);
+  if (charging) {
+    lv_obj_remove_flag(stBolt, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(stBolt, LV_OBJ_FLAG_HIDDEN);
+  }
+  lv_obj_remove_flag(stBat, LV_OBJ_FLAG_HIDDEN);
+}
+
+// ------------------------------------------------------------------------------------ the Hub's list ---
+// at power-on: its short copy (catalog::loadHub) at once, or, without one, the whole list read in the background
+// (seconds), which writes the copy for next time
+static std::vector<Firmware> bootHub;
+static std::string bootUpdated;
+static std::atomic<int> bootRead{0};  // 1: reading, 2: read, 3: it didn't
+static bool hubNew;                   // the Hub's list came new since: the one read at power-on is old
+
+static void bootHubBegin() {
+  uint32_t t = hal::millis();
+  if (catalog::loadHub(catalog::hub, catalog::hubUpdated)) {
+    hal::log("hub: %u firmwares, kept (%u ms)", (unsigned)catalog::hub.size(), (unsigned)(hal::millis() - t));
+    return;
+  }
+  bootRead = 1;
+  hal::spawn(
+      [](void*) {
+        std::string err;
+        uint32_t t = hal::millis();
+        bootRead = catalog::parseHub(bootHub, bootUpdated, err) ? 2 : 3;
+        hal::log("hub: %u firmwares, read (%u ms)%s%s", (unsigned)bootHub.size(), (unsigned)(hal::millis() - t),
+                 err.empty() ? "" : ": ", err.c_str());
+      },
+      0);
+}
+
+static void bootHubWatch() {
+  if (bootRead < 2) {
+    return;
+  }
+  if (bootRead == 2 && !hubNew) {
+    catalog::hub.swap(bootHub);
+    catalog::hubUpdated = bootUpdated;
+    catalog::scanSd();
+    if (current == firmwarePage) {
+      go(firmwarePage);
+    }
+  }
+  bootRead = 0;
+  std::vector<Firmware>().swap(bootHub);
+}
+
 static void watch(lv_timer_t*) {
   if (jobs::bluetoothPaused()) {
     toast("Bluetooth MIDI is paused: Wi-Fi is on.");
@@ -475,6 +596,7 @@ static void watch(lv_timer_t*) {
     if (jobs::ok && jobs::kind == jobs::HUB) {
       catalog::hub.swap(jobs::hub);
       std::vector<Firmware>().swap(jobs::hub);  // the old list
+      hubNew = true;
       catalog::hubUpdated = jobs::hubUpdated;
       catalog::scanSd();
     } else if (jobs::kind == jobs::DOWNLOAD || jobs::kind == jobs::INSTALL) {
@@ -495,6 +617,8 @@ static void watch(lv_timer_t*) {
     tick();
   }
   railStatus();
+  bootHubWatch();
+  batteryWatch();
   sleepWatch();
 }
 
@@ -518,7 +642,6 @@ void ui::rebuild() {
 
 void ui::begin() {
   settingsLoad();
-  hal::backlight(settings.brightness);
   hal::TouchCal cal;
   if (hal::load("touchcal", &cal, sizeof cal)) {
     hal::touchCal(&cal);
@@ -534,9 +657,8 @@ void ui::begin() {
     midi::loadMap();
   }
   midi::route(routing && !hal::diskMode() && !hal::recoveryMode());
-  std::string err;
-  catalog::parseHub(catalog::hub, catalog::hubUpdated, err);
   if (!hal::diskMode()) {  // (the computer has the card then: nothing here touches it)
+    bootHubBegin();
     catalog::scanSd();
   }
   setTheme(lv_display_get_default());
@@ -551,4 +673,7 @@ void ui::begin() {
     go(tabs[s], pages[s]);
   }
   lv_timer_create(watch, 100, 0);
+  // the first screen drawn, then the light on (not a lit black screen meanwhile)
+  lv_refr_now(0);
+  hal::backlight(settings.brightness);
 }

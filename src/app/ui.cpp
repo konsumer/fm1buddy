@@ -640,8 +640,20 @@ void ui::rebuild() {
       0);
 }
 
-void ui::begin() {
+// the frame: the rail, the start page's tab lit, its page empty. Drawn as soon as there's a screen, so the app is there
+// at once: the rest comes in a moment (ui::begin)
+void ui::frame() {
   settingsLoad();
+  setTheme(lv_display_get_default());
+  build();
+  static const Tab tabs[STARTS] = {FIRMWARE, MIDI, MIDI, MIDI, SOUNDS};
+  lv_obj_add_state(::tabs[tabs[startPage()]], LV_STATE_CHECKED);
+  lv_refr_now(0);
+  hal::backlight(settings.brightness);  // (the light on once it's drawn: not a lit black screen meanwhile)
+  hal::log("boot: frame on screen at %u ms", (unsigned)hal::millis());
+}
+
+void ui::begin() {
   hal::TouchCal cal;
   if (hal::load("touchcal", &cal, sizeof cal)) {
     hal::touchCal(&cal);
@@ -657,12 +669,6 @@ void ui::begin() {
     midi::loadMap();
   }
   midi::route(routing && !hal::diskMode() && !hal::recoveryMode());
-  if (!hal::diskMode()) {  // (the computer has the card then: nothing here touches it)
-    bootHubBegin();
-    catalog::scanSd();
-  }
-  setTheme(lv_display_get_default());
-  build();
   if (hal::diskMode() || hal::recoveryMode()) {
     go(hal::diskMode() ? diskPage : recoverPage);
   } else {
@@ -673,7 +679,19 @@ void ui::begin() {
     go(tabs[s], pages[s]);
   }
   lv_timer_create(watch, 100, 0);
-  // the first screen drawn, then the light on (not a lit black screen meanwhile)
   lv_refr_now(0);
-  hal::backlight(settings.brightness);
+  hal::log("boot: on screen at %u ms", (unsigned)hal::millis());
+  // then the firmwares (a third of a second: the Hub's list, the SD card's), and the page again with them
+  lv_timer_t* then = lv_timer_create(
+      [](lv_timer_t*) {
+        if (!hal::diskMode()) {  // (the computer has the card then: nothing here touches it)
+          bootHubBegin();
+          catalog::scanSd();
+          if (current == firmwarePage) {
+            go(firmwarePage);
+          }
+        }
+      },
+      0, 0);
+  lv_timer_set_repeat_count(then, 1);
 }

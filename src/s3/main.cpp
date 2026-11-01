@@ -29,6 +29,9 @@ static void flush(lv_display_t* d, const lv_area_t* a, uint8_t* px) {
   lv_display_flush_ready(d);
 }
 
+// the panel reset first: it takes 300 ms to wake, while the screen starts (touchReady)
+static uint32_t touchReady;
+
 static void touchBegin() {
   gpio_hold_dis((gpio_num_t)TOUCH_RST);  // (held through a sleep: hal::sleep)
   gpio_hold_dis((gpio_num_t)TFT_BL);
@@ -37,7 +40,7 @@ static void touchBegin() {
   digitalWrite(TOUCH_RST, 0);
   delay(10);
   digitalWrite(TOUCH_RST, 1);
-  delay(300);
+  touchReady = millis() + 300;
   Wire.begin(TOUCH_SDA, TOUCH_SCL, 400000);
 }
 
@@ -76,6 +79,9 @@ static void readFingers() {
   seenAt = millis();
   uint8_t r[13];
   nSeen = 0;
+  if ((int32_t)(millis() - touchReady) < 0) {
+    return;  // (the panel is still waking: touchBegin)
+  }
   if (tapUntil && (int32_t)(tapUntil - millis()) > 0) {  // the console's tap is a finger too (calibration, the pads)
     seen[0] = {tapX, tapY, 0, 32, 2};
     nSeen = 1;
@@ -169,19 +175,14 @@ static uint32_t tick() {
 
 void setup() {
   Serial.begin(115200);
-  board::begin();
-
-  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0) {
-    hal::log("boot: woken by a touch");
-  }
-  hal::log("boot: screen");
-  tft.init();
-  hal::backlight(0);  // (TFT_eSPI lit it: dark until the app's first screen is drawn, ui::begin)
-  tft.setRotation(1);
-  tft.fillScreen(TFT_BLACK);
+  // the screen first, and the app's frame on it (ui::frame): then the rest
+  hal::log("boot: screen at %u ms", (unsigned)millis());
   touchBegin();
+  tft.init();
+  hal::backlight(0);  // (TFT_eSPI lit it: dark until the app's frame is drawn, ui::frame)
+  tft.setRotation(1);
 
-  hal::log("boot: lvgl");
+  hal::log("boot: lvgl at %u ms", (unsigned)millis());
   lv_init();
   lv_tick_set_cb(tick);
   lv_log_register_print_cb([](lv_log_level_t, const char* s) { hal::log("%s", s); });
@@ -195,16 +196,19 @@ void setup() {
   lv_indev_set_type(in, LV_INDEV_TYPE_POINTER);
   lv_indev_set_read_cb(in, readTouch);
 
-  hal::log("boot: app");
+  ui::frame();
+
+  board::begin();
+  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0) {
+    hal::log("boot: woken by a touch");
+  }
+  hal::log("boot: app at %u ms", (unsigned)millis());
   // in recovery mode, the serial port off first: its Serial.end() drives D+ and D- low, and the recover page's
   // job may already be sending the key on them (key_s3.cpp)
   if (hal::recoveryMode()) {
     board::usbBegin();
   }
-  ui::begin();
-  if (!hal::recoveryMode()) {
-    board::usbBegin();
-  }
+  ui::begin();  // (the USB port otherwise: board::loop, once it knows if a computer is on it)
   hal::log("fm1buddy: up in %u ms, %u KB internal RAM free, %u KB PSRAM free", (unsigned)millis(),
            (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024), (unsigned)(ESP.getFreePsram() / 1024));
 }

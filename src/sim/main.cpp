@@ -177,6 +177,7 @@ int main(int argc, char** argv) {
   lv_indev_set_type(in, LV_INDEV_TYPE_POINTER);
   lv_indev_set_read_cb(in, readPointer);
 
+  ui::frame();
   ui::begin();
   for (int t = 0; themeName && t < THEME_COUNT; t++) {  // (just for this run: not saved)
     if (!strcasecmp(themeName, THEMES[t].name)) {

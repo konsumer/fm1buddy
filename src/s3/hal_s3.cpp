@@ -13,6 +13,9 @@
 #include <sys/stat.h>
 
 #include <algorithm>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "board.h"
 #include "hal.h"
@@ -93,7 +96,22 @@ static uint32_t logW, logR;
 static portMUX_TYPE logMux = portMUX_INITIALIZER_UNLOCKED;
 static TaskHandle_t mainTask;
 
+// the USB port: 0 while it's not known yet if a computer is on it (board::loop finds out), 1 known, 2 started
+// (board::usbBegin)
+static int usbState;
+#define USB_WAIT 1600  // ms from power-on: a computer on the port has said so by then
+static bool hostTestNow;
+// lines said before that's known: then they go where the log goes (the SD card, or the serial port)
+static std::vector<std::pair<uint32_t, std::string>>* early;
+
 static void writeLine(const char* line, uint32_t ms) {
+  if (!usbState) {
+    if (!early) {
+      early = new std::vector<std::pair<uint32_t, std::string>>();
+    }
+    early->emplace_back(ms, line);
+    return;
+  }
   if (!logToSd) {
     Serial.println(line);
   } else if (FILE* f = fopen(logFile, "a")) {
@@ -166,6 +184,19 @@ void hal::log(const char* fmt, ...) {
   portEXIT_CRITICAL(&logMux);
 }
 
+static void usbKnown();
+
+// the lines said before the log had a place
+static void earlyLines() {
+  if (early) {
+    for (auto& l : *early) {
+      writeLine(l.second.c_str(), l.first);
+    }
+    delete early;
+    early = 0;
+  }
+}
+
 void board::begin() {
   mainTask = xTaskGetCurrentTaskHandle();
   set_arduino_panic_handler(onPanic, 0);
@@ -194,16 +225,28 @@ void board::begin() {
   disk = diskFlag == DISK_MODE && sdOk;
   diskFlag = 0;
   if (disk) {  // the card is the computer's: nothing here touches it, no log on it
+    usbState = 1;
+    earlyLines();
     hal::log("fm1buddy: USB disk mode (%u MB)", (unsigned)((uint64_t)SD_MMC.numSectors() * SD_MMC.sectorSize() >> 20));
     return;
   }
   // a computer on the USB-C port (it sends start-of-frames): stay its serial port. Else: the USB host
-  // (board::usbBegin), and the log goes to the SD card
-  bool test = hostTest == HOST_TEST;
+  // (board::usbBegin), and the log goes to the SD card. Up to USB_WAIT to know: board::loop finds out, meanwhile the
+  // screen starts. Only for recovery mode it's waited for here (the app starts on the recover page, or doesn't)
+  hostTestNow = hostTest == HOST_TEST;
   hostTest = 0;
-  for (uint32_t t = millis(); !test && millis() - t < 1500 && !computer; delay(10)) {
-    computer = HWCDC::isPlugged();
+  if (recoveryFlag == RECOVERY_MODE) {
+    for (; !hostTestNow && millis() < USB_WAIT && !computer; delay(10)) {
+      computer = HWCDC::isPlugged();
+    }
+    usbKnown();
   }
+}
+
+// a computer on the port or not, known now: where the log goes, recovery mode
+static void usbKnown() {
+  bool test = hostTestNow;
+  usbState = 1;
   recovery = recoveryFlag == RECOVERY_MODE && !computer;  // (not with a computer on the port)
   recoveryFlag = 0;
   if (recovery) {  // the FM-1 is on the port (not a computer): its USB lines are the key's (key_s3.cpp)
@@ -214,6 +257,7 @@ void board::begin() {
       fclose(f);
       logToSd = true;
     }
+    earlyLines();
     hal::log("fm1buddy: recovery mode, last reset: %d", (int)esp_reset_reason());
     logCrash();
     return;
@@ -228,6 +272,7 @@ void board::begin() {
     hostTestUntil = millis() + 40000;
     hostScript[sizeof hostScript - 1] = 0;
   }
+  earlyLines();
   hal::log("fm1buddy: sd %s, usb %s%s, last reset: %d", sdOk ? "mounted" : "none",
            computer ? (hal::computerMidi() ? "USB MIDI (a computer)" : "serial (a computer)") : "host", test ? " (a test: 40 s)" : "", (int)esp_reset_reason());
   logCrash();
@@ -240,6 +285,7 @@ static void phyToSerial() {
 }
 
 void board::usbBegin() {
+  usbState = 2;
   if (disk) {
     esp_register_shutdown_handler(phyToSerial);
     Serial.end();
@@ -265,6 +311,17 @@ void board::usbBegin() {
 }
 
 void board::loop() {
+  if (usbState < 2) {  // a computer on the port or not (board::begin), then the port as that wants it
+    if (!usbState) {
+      computer = computer || HWCDC::isPlugged();
+      if (computer || hostTestNow || millis() >= USB_WAIT) {
+        usbKnown();
+      }
+    }
+    if (usbState == 1) {
+      board::usbBegin();
+    }
+  }
   flushLog();
   if (hostTestUntil && (int32_t)(millis() - hostTestUntil) >= 0) {
     hal::log("usb: the test is over: restarting");

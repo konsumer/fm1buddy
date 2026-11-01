@@ -545,46 +545,53 @@ static void batteryWatch() {
   lv_obj_remove_flag(stBat, LV_OBJ_FLAG_HIDDEN);
 }
 
-// ------------------------------------------------------------------------------------ the Hub's list ---
-// at power-on: its short copy (catalog::loadHub) at once, or, without one, the whole list read in the background
-// (seconds), which writes the copy for next time
-static std::vector<Firmware> bootHub;
+// ------------------------------------------------------------------------------------ the firmwares ---
+// at power-on, on a thread of their own (the screen answers meanwhile): the Hub's list (its short copy, catalog::loadHub,
+// in a moment; without one, the whole list, seconds, which writes the copy for next time), then the SD card's
+// firmwares. The UI's thread takes them once they're there (bootWatch)
+static std::vector<Firmware> bootHub, bootSd;
 static std::string bootUpdated;
-static std::atomic<int> bootRead{0};  // 1: reading, 2: read, 3: it didn't
-static bool hubNew;                   // the Hub's list came new since: the one read at power-on is old
+static std::atomic<bool> bootDone{false};
+static bool bootRunning;
+static bool hubNew;  // the Hub's list came new since: the one read at power-on is old
 
-static void bootHubBegin() {
-  uint32_t t = hal::millis();
-  if (catalog::loadHub(catalog::hub, catalog::hubUpdated)) {
-    hal::log("hub: %u firmwares, kept (%u ms)", (unsigned)catalog::hub.size(), (unsigned)(hal::millis() - t));
-    return;
-  }
-  bootRead = 1;
+static void bootBegin() {
+  bootRunning = true;
   hal::spawn(
       [](void*) {
-        std::string err;
         uint32_t t = hal::millis();
-        bootRead = catalog::parseHub(bootHub, bootUpdated, err) ? 2 : 3;
-        hal::log("hub: %u firmwares, read (%u ms)%s%s", (unsigned)bootHub.size(), (unsigned)(hal::millis() - t),
-                 err.empty() ? "" : ": ", err.c_str());
+        std::string err;
+        bool kept = catalog::loadHub(bootHub, bootUpdated);
+        if (!kept) {
+          catalog::parseHub(bootHub, bootUpdated, err);
+        }
+        uint32_t hubMs = hal::millis() - t;
+        catalog::scanSdInto(bootHub, bootSd);
+        hal::log("boot: hub %u firmwares %s (%u ms)%s%s, sd %u (%u ms)", (unsigned)bootHub.size(), kept ? "kept" : "read",
+                 (unsigned)hubMs, err.empty() ? "" : ": ", err.c_str(), (unsigned)bootSd.size(),
+                 (unsigned)(hal::millis() - t - hubMs));
+        bootDone = true;
       },
       0);
 }
 
-static void bootHubWatch() {
-  if (bootRead < 2) {
+static void bootWatch() {
+  if (!bootRunning || !bootDone) {
     return;
   }
-  if (bootRead == 2 && !hubNew) {
+  bootRunning = false;
+  if (hubNew) {  // (a newer list came meanwhile: the card's firmwares again, with it)
+    catalog::scanSd();
+  } else {
     catalog::hub.swap(bootHub);
     catalog::hubUpdated = bootUpdated;
-    catalog::scanSd();
-    if (current == firmwarePage) {
-      go(firmwarePage);
-    }
+    catalog::sd.swap(bootSd);
   }
-  bootRead = 0;
   std::vector<Firmware>().swap(bootHub);
+  std::vector<Firmware>().swap(bootSd);
+  if (current == firmwarePage) {
+    go(firmwarePage);
+  }
 }
 
 static void watch(lv_timer_t*) {
@@ -617,7 +624,7 @@ static void watch(lv_timer_t*) {
     tick();
   }
   railStatus();
-  bootHubWatch();
+  bootWatch();
   batteryWatch();
   sleepWatch();
 }
@@ -681,17 +688,7 @@ void ui::begin() {
   lv_timer_create(watch, 100, 0);
   lv_refr_now(0);
   hal::log("boot: on screen at %u ms", (unsigned)hal::millis());
-  // then the firmwares (a third of a second: the Hub's list, the SD card's), and the page again with them
-  lv_timer_t* then = lv_timer_create(
-      [](lv_timer_t*) {
-        if (!hal::diskMode()) {  // (the computer has the card then: nothing here touches it)
-          bootHubBegin();
-          catalog::scanSd();
-          if (current == firmwarePage) {
-            go(firmwarePage);
-          }
-        }
-      },
-      0, 0);
-  lv_timer_set_repeat_count(then, 1);
+  if (!hal::diskMode()) {  // (the computer has the card then: nothing here touches it)
+    bootBegin();
+  }
 }

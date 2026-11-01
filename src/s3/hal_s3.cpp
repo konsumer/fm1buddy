@@ -143,7 +143,10 @@ void board::logNow() {
   flushLog();
 }
 
+static volatile bool psramOn;  // the USB host doesn't start meanwhile: its buffers must be in the internal RAM
+
 void hal::psramFirst(bool on) {
+  psramOn = on;
   heap_caps_malloc_extmem_enable(on ? 0 : CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL);  // (as the Arduino core has it)
 }
 
@@ -313,12 +316,12 @@ void board::usbBegin() {
 void board::loop() {
   if (usbState < 2) {  // a computer on the port or not (board::begin), then the port as that wants it
     if (!usbState) {
-      computer = computer || HWCDC::isPlugged();
+      computer = computer || (!hostTestNow && HWCDC::isPlugged());  // (the host test: the host, whatever is on the port)
       if (computer || hostTestNow || millis() >= USB_WAIT) {
         usbKnown();
       }
     }
-    if (usbState == 1) {
+    if (usbState == 1 && !psramOn) {  // (not while small blocks go to the PSRAM: hal::psramFirst)
       board::usbBegin();
     }
   }

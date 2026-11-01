@@ -367,7 +367,7 @@ static bool isPkg(const char* name) {
   return name[0] != '.' && n > 5 && !strcasecmp(name + n - 5, ".fwsc");
 }
 
-void catalog::scanSd() {
+void catalog::scanSdInto(std::vector<Firmware>& hub, std::vector<Firmware>& sd) {
   sd.clear();
   for (Firmware& h : hub) {
     h.onSd = false;
@@ -435,4 +435,8 @@ void catalog::scanSd() {
     }
   }
   std::sort(sd.begin(), sd.end(), [](const Firmware& a, const Firmware& b) { return strcasecmp(a.name.c_str(), b.name.c_str()) < 0; });
+}
+
+void catalog::scanSd() {
+  scanSdInto(hub, sd);
 }

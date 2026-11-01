@@ -41,6 +41,8 @@ bool parseHub(std::vector<Firmware>& out, std::string& updated, std::string& err
 bool loadHub(std::vector<Firmware>& out, std::string& updated);
 // the files in /fm1, with what the Hub's list knows about them; marks the Hub's that are there
 void scanSd();
+// the same into sd, with the Hub's list hub (marked where it's on the card): from another thread
+void scanSdInto(std::vector<Firmware>& hub, std::vector<Firmware>& sd);
 // the device a package is for, from its own header ("FM-1_974"), "" if it isn't a package
 std::string product(const char* path);
 }  // namespace catalog

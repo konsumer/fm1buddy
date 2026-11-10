@@ -17,6 +17,9 @@
 #include "mflr_loader.h"
 #include "midi.h"
 #include "sloopfmt.h"
+#define BS_NO_VIEWER  // (the viewer's half is mirror.cpp's)
+#define BIGSCREEN_IMPLEMENTATION
+#include "bigscreen.h"
 
 #define FM1 0  // the slots they're in
 #define KEYS 1
@@ -45,13 +48,11 @@ static struct {
   std::vector<bool> got;
   // fomajam: its song (a version 9 one is 11914 bytes, starting with 9 and the tempo), its kits, and one coming in
   bool fomajam, playing;
-  bool sloop;            // it runs SLOOP (its editor protocol: sloopAnswer)
-  bool felucca;          // ... or plain Felucca (the same, but 3 sample slots, no backups)
-  bool lostCal;          // its flash's SMK-37 calibration sector is blank (an SMK-37 that lost it: it looks like an FM-1)
-  bool smk;              // it's an SMK-37 Elite on its stock firmware (the FM-1's chip and update, its own name)
-  bool bigscreen;        // its firmware has Big Screen: it sends its screen while asked (mirror.h)
-  uint32_t screenUntil;  // asked until then
-  bool screenAll;        // send all of it, not just what changed
+  bool sloop;      // it runs SLOOP (its editor protocol: sloopAnswer)
+  bool felucca;    // ... or plain Felucca (the same, but 3 sample slots, no backups)
+  bool lostCal;    // its flash's SMK-37 calibration sector is blank (an SMK-37 that lost it: it looks like an FM-1)
+  bool smk;        // it's an SMK-37 Elite on its stock firmware (the FM-1's chip and update, its own name)
+  bool bigscreen;  // its firmware has Big Screen: it sends its screen while asked (mirror.h)
   std::vector<uint8_t> song, kits, in;
   uint32_t inTotal, inGot;
 } f;
@@ -778,19 +779,16 @@ bool fake::storage(const uint8_t* cdb, uint8_t cdbLen, bool in, uint8_t* buf, ui
   return false;
 }
 
+static bool screenHello(const uint8_t* b, uint32_t n);
+
 static void fromHost(const uint8_t* b, uint32_t n) {
   static const uint8_t HS[] = {0xF0, 0x00, 0x32, 0x45};
   static const uint8_t KEY[] = {0xF0, 0x22, 0x24, 0x35, 0x7D, 0xF7};
   static const uint8_t UPGRADE[] = {0xF0, 0x22, 0x24, 0x35, 0x7F, 0xF7};
   uint8_t req[16];
-  static const uint8_t SCREEN[] = {0xF0, 0x7D, 'F', 'S'};
   if (n == 10 && !memcmp(b, HS, 4)) {  // (cmd 0x51's frames start the same way)
     identity();
-  } else if (f.state == decltype(f.state)::RUN && f.bigscreen && n == 6 && !memcmp(b, SCREEN, 4) && b[5] == 0xF7) {
-    if (!f.screenUntil || (int32_t)(hal::millis() - f.screenUntil) >= 0 || b[4] == 1) {
-      f.screenAll = true;  // a new viewer
-    }
-    f.screenUntil = hal::millis() + 3000;
+  } else if (f.state == decltype(f.state)::RUN && f.bigscreen && screenHello(b, n)) {
   } else if (f.state == decltype(f.state)::RUN && n == sizeof KEY && !memcmp(b, KEY, n)) {
     ubootEnter();
   } else if (f.state == decltype(f.state)::RUN && f.fomajam && share(b, n)) {
@@ -967,9 +965,11 @@ bool hal::bleChanged() {
 }
 
 // ------------------------------------------------------------------------------------- Big Screen ---
-// its screen: a header, four pads, and a bar and a dot that move (so changes show), as Big Screen sends it
+// its screen: a header, four pads, and a bar and a dot that move (so changes show), sent as Big Screen firmware sends it
+// (bigscreen.h: version 2, or version 1 to a viewer that asks for that)
 #define SCR 240
-static uint16_t screenPx[SCR * SCR], screenSent[SCR * SCR];
+static uint16_t screenPx[SCR * SCR];
+static bs_dev screenDev;
 
 static void screenDraw(uint32_t now) {
   int bar = 20 + (int)((sin(now / 700.0) + 1) * 95), dot = (int)(now / 8 % (SCR - 20));
@@ -992,47 +992,24 @@ static void screenDraw(uint32_t now) {
   }
 }
 
-// a row from x0 to x1, as sm_rows sends it: messages of up to 70 bytes, runs of a colour
-static void screenRow(int y, int x0, int x1) {
-  const uint16_t* px = screenPx + y * SCR;
-  for (int x = x0; x < x1;) {
-    uint8_t m[70] = {0xF0, 0x7D, 'F', 'S', 1, (uint8_t)(y & 127), (uint8_t)(y >> 7), (uint8_t)(x & 127),
-                     (uint8_t)(x >> 7)};
-    uint32_t k = 9;
-    for (; x < x1 && k + 5 <= sizeof m; k += 4) {
-      int run = 1;
-      while (x + run < x1 && run < 127 && px[x + run] == px[x]) {
-        run++;
-      }
-      m[k] = (uint8_t)run, m[k + 1] = px[x] & 127, m[k + 2] = px[x] >> 7 & 127, m[k + 3] = px[x] >> 14;
-      x += run;
-    }
-    m[k++] = 0xF7;
-    sendSysex(FM1, m, k);
+// a viewer's hello (either version): true if it was one
+static bool screenHello(const uint8_t* b, uint32_t n) {
+  if (!screenDev.fb) {
+    bs_dev_init(&screenDev, screenPx, SCR, SCR, SCR, 0);
   }
+  return bs_dev_sysex(&screenDev, b, n, hal::millis());
 }
 
 static void screenSend(uint32_t now) {
-  if (!f.screenUntil || (int32_t)(now - f.screenUntil) >= 0 || f.state != decltype(f.state)::RUN) {
+  if (!bs_dev_active(&screenDev) || f.state != decltype(f.state)::RUN) {
     return;
   }
   screenDraw(now);
-  for (int y = 0; y < SCR; y++) {
-    int x0 = 0, x1 = SCR;
-    if (!f.screenAll) {  // only what changed
-      while (x0 < SCR && screenPx[y * SCR + x0] == screenSent[y * SCR + x0]) {
-        x0++;
-      }
-      while (x1 > x0 && screenPx[y * SCR + x1 - 1] == screenSent[y * SCR + x1 - 1]) {
-        x1--;
-      }
-    }
-    if (x0 < x1) {
-      screenRow(y, x0, x1);
-    }
+  bs_dev_changed(&screenDev, 0, 0, SCR, SCR);
+  const uint8_t* m;
+  for (uint32_t n; (n = bs_dev_next(&screenDev, now, &m));) {
+    sendSysex(FM1, m, n);
   }
-  memcpy(screenSent, screenPx, sizeof screenPx);
-  f.screenAll = false;
 }
 
 void fake::bigscreenMode(bool on) {

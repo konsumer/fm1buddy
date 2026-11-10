@@ -16,6 +16,8 @@
 
 #define OUT_N 512  // packets waiting for each device
 #define SYSEX_Q 8
+#define SYSEX_CUR 260  // the one coming in: the screen's are longer (bigscreen.h's BS_MSG: 256 at most), and kept only
+                       // that far
 
 namespace midi {
 std::atomic<bool> thru{true};
@@ -41,7 +43,7 @@ struct Slot {
   uint32_t ow, orr;
   Enc enc, dec;  // bytes to it; bytes from it (Bluetooth)
   // from it: the SysEx being put together, and the complete ones
-  uint8_t cur[SYSEX_MAX];
+  uint8_t cur[SYSEX_CUR];
   uint32_t curN;
   bool curOn;
   uint8_t q[SYSEX_Q][SYSEX_MAX];
@@ -239,7 +241,7 @@ static void sysexByte(int d, Slot& s, uint8_t b) {
   if (!s.curOn) {
     return;
   }
-  if (s.curN < SYSEX_MAX) {
+  if (s.curN < SYSEX_CUR) {
     s.cur[s.curN++] = b;
   } else {
     s.curOn = false;  // too long to keep
@@ -251,7 +253,7 @@ static void sysexByte(int d, Slot& s, uint8_t b) {
     if (mirror::sysex(d, s.cur, s.curN)) {
       return;  // the FM-1's screen: it has it
     }
-    if (s.qw - s.qr < SYSEX_Q) {
+    if (s.curN <= SYSEX_MAX && s.qw - s.qr < SYSEX_Q) {
       memcpy(s.q[s.qw % SYSEX_Q], s.cur, s.curN);
       s.qn[s.qw % SYSEX_Q] = s.curN;
       s.qw++;
@@ -314,7 +316,7 @@ static void inLocked(int d, const uint8_t p[4]) {
   routeLocked(d, p);
 }
 
-// the FM-1's screen (F0 7D 'F' 'S' ...) stays here while it shows: a row a few ms to every other device would only
+// the FM-1's screen (F0 7D 'F' 'S' ..., F0 7D 'B' 'S' ...) stays here while it shows: a row a few ms to every other device would only
 // fill their queues. True: p isn't routed (now)
 static bool screenSysex(Slot& s, const uint8_t p[4]) {
   uint8_t cin = p[0] & 0x0F;
@@ -332,7 +334,7 @@ static bool screenSysex(Slot& s, const uint8_t p[4]) {
     routeLocked(&s - slots, s.fsHeld);
     return false;
   }
-  if (cin == 0x4 && p[1] == 0xF0 && p[2] == 0x7D && p[3] == 'F' && mirror::active()) {
+  if (cin == 0x4 && p[1] == 0xF0 && p[2] == 0x7D && (p[3] == 'F' || p[3] == 'B') && mirror::active()) {
     memcpy(s.fsHeld, p, 4);
     s.fs = 1;
     return true;

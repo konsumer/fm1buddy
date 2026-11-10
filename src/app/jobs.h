@@ -29,6 +29,8 @@ enum Kind { NONE,
             SLOOP_BACKUP,   // SLOOP: a backup of it, in SLOOP's file (sloop.h)
             SLOOP_RESTORE,  // SLOOP: a backup onto it (backed up first)
             SLOOP_PROJECT,  // SLOOP: one project of a backup onto it
+            SLOOP_SONG,     // SLOOP: its song to a .sloopsong file
+            SLOOP_SONG_IN,  // SLOOP: a .sloopsong file onto it (its song saved first)
             SLOOP_SAMPLES,  // SLOOP: .wav files into a sample slot
             IDENTIFY,       // the FM-1's chip, through its boot loader, and back (uboot::lastChip)
             CHECK_UPDATE,   // fm1buddy's newest release, from the installer page (updateTag)
@@ -99,7 +101,8 @@ extern std::string hubUpdated;
 extern int device;             // PROBE, SEND, VOICE, KEEP, RESTORE: the device
 extern sounds::Speaks speaks;  // PROBE
 extern std::string saved;      // VOICE: the file it went into; KEEP: the setup; EXPORT: what it did; BACKUP, RECOVER: its
-                               // backup's file; SLOOP_BACKUP: the backup; SLOOP_RESTORE: the backup made first
+                               // backup's file; SLOOP_BACKUP: the backup; SLOOP_RESTORE: the backup made first; SLOOP_SONG: the
+                               // song file; SLOOP_SONG_IN: the song saved first
 
 bool hubList(bool asked = true);  // asked: the user did (else it's automatic, and doesn't pause Bluetooth MIDI)
 // a job the user asked for needed Wi-Fi, so Bluetooth MIDI paused (once, for a message)
@@ -130,6 +133,9 @@ bool recover();  // in recovery mode: put it on
 bool sloopBackup(int d);
 bool sloopRestore(int d, const std::string& file);
 bool sloopProject(int d, const std::string& file, int from, int to);
+// its song to a new file in /sloop/songs; a song file (in /sloop/songs) onto it
+bool sloopSong(int d);
+bool sloopSongIn(int d, const std::string& file);
 bool sloopSamples(int d, const std::string& source, int slot);
 // fm1buddy itself: its newest release for this board (FM1BUDDY_BIN), from the installer page. After CHECK_UPDATE:
 // updateTag is the newer release's tag, "" if this is the newest (or there's none for this board)

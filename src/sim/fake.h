@@ -10,6 +10,7 @@ void begin(bool fm1, int keys, bool faults, bool fomajam = false);  // keys: how
 // the FM-1 runs SLOOP (its editor protocol: backups, projects, sample slots)
 void sloopMode(bool on);
 // or plain Felucca: the same protocol, its 3 sample slots and no backups
+void kittenMode(bool on);  // Kitten Synths: SLOOP that says only "FELUCCA 2.8-KITTEN BETA"
 void feluccaMode(bool on);
 // or an SMK-37 Elite (the FM-1's chip in a keyboard) on its stock firmware
 void smkMode(bool on);

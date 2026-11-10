@@ -1,5 +1,6 @@
 // SLOOP (from the Sounds page, with an FM-1 running SLOOP 2.3 or later): backing it up in SLOOP's own file, the
-// backups on the SD card (restoring one, loading a project from one), and .wav files into its sample slots (sloop.h)
+// backups on the SD card (restoring one, loading a project from one), its song as a .sloopsong file and those back
+// onto it, and .wav files into its sample slots (sloop.h)
 #include <stdio.h>
 #include <string.h>
 
@@ -15,9 +16,10 @@
 using namespace ui;
 
 static void backupFilePage(lv_obj_t* page);
+static void songFilePage(lv_obj_t* page);
 static void samplesPage(lv_obj_t* page);
 
-static std::string chosen;  // the backup shown, or the sample source picked
+static std::string chosen;  // the backup or song shown, or the sample source picked
 static Builder shown;       // the page showing (to show again)
 static lv_obj_t *status, *bar;
 
@@ -79,20 +81,26 @@ static void jobEnded() {
   std::string msg;
   if (!jobs::ok) {
     msg = devText(jobs::error);
-    if (k == jobs::SLOOP_RESTORE && !jobs::saved.empty()) {
+    if ((k == jobs::SLOOP_RESTORE || k == jobs::SLOOP_SONG_IN) && !jobs::saved.empty()) {
       msg += " (how it was is in " + jobs::saved + ")";
     }
   } else if (k == jobs::SLOOP_BACKUP) {
     msg = "Saved as " SLOOP_DIR "/" + jobs::saved + ".";
   } else if (k == jobs::SLOOP_RESTORE) {
     msg = "Restored. How it was before is in " + jobs::saved + ".";
+  } else if (k == jobs::SLOOP_SONG) {
+    msg = "Saved as " SLOOP_SONGS_DIR "/" + jobs::saved + ".";
+  } else if (k == jobs::SLOOP_SONG_IN) {
+    msg = "Loaded. The song it had is in " + jobs::saved + ".";
   } else {
     msg = k == jobs::SLOOP_PROJECT ? devText("The project is on the FM-1.") : devText("The samples are on the FM-1.");
   }
   toast(msg.c_str(), !jobs::ok);
-  go(k == jobs::SLOOP_SAMPLES ? samplesPage : k == jobs::SLOOP_BACKUP ? sloopPage
-                                                                      : backupFilePage);
-  if (k != jobs::SLOOP_BACKUP) {
+  go(k == jobs::SLOOP_SAMPLES                           ? samplesPage
+     : k == jobs::SLOOP_BACKUP || k == jobs::SLOOP_SONG ? sloopPage
+     : k == jobs::SLOOP_SONG_IN                         ? songFilePage
+                                                        : backupFilePage);
+  if (k != jobs::SLOOP_BACKUP && k != jobs::SLOOP_SONG && k != jobs::SLOOP_SONG_IN) {
     soundsReprobe();  // (what's on it changed: its sample slots are asked again)
   }
 }
@@ -157,6 +165,18 @@ static void openBackup(lv_event_t* e) {
   go(backupFilePage);
 }
 
+static void songTapped(lv_event_t*) {
+  if (!jobs::sloopSong(soundsDev())) {
+    toast("Busy: try again in a moment.", true);
+  }
+  showProgress();
+}
+
+static void openSong(lv_event_t* e) {
+  chosen = *(std::string*)lv_event_get_user_data(e);
+  go(songFilePage);
+}
+
 void ui::sloopPage(lv_obj_t* page) {
   const Theme& t = theme();
   shown = sloopPage;
@@ -189,6 +209,24 @@ void ui::sloopPage(lv_obj_t* page) {
                                        "backups go here too."
                                      : "No SD card.")
                         : "SLOOP's own files: its web editor opens them, and its backups go here too.",
+          t.dim);
+
+  // the songs
+  h = label(body, "Songs (" SLOOP_SONGS_DIR ")", &lv_font_montserrat_14, t.text);
+  lv_obj_set_style_pad_top(h, 6, 0);
+  button(body, LV_SYMBOL_SAVE "  Save its song", songTapped);
+  static std::vector<std::string> songs;
+  songs = sloop::songs();
+  for (std::string& f : songs) {
+    lv_obj_t* r = listRow(body, openSong, &f);
+    lv_obj_t* l = line(r, f.c_str(), &lv_font_montserrat_16, t.text);
+    lv_obj_set_flex_grow(l, 1);
+    label(r, LV_SYMBOL_RIGHT, &lv_font_montserrat_14, t.dim);
+  }
+  wrapped(body,
+          hal::sd() ? "A song is the loop, the sections A-D and their order, in SLOOP's own .sloopsong file: its web "
+                      "editor's songs (Song & sections > Export this song) go here too."
+                    : "No SD card.",
           t.dim);
 
   slotList(body, s);
@@ -295,6 +333,68 @@ static void backupFilePage(lv_obj_t* page) {
   }
   wrapped(body, devText("Load replaces that project on the FM-1 (the working project: what it plays now).").c_str(), t.dim);
   lv_obj_t* d = button(body, LV_SYMBOL_TRASH "  Delete the backup", deleteTapped);
+  lv_obj_set_style_margin_top(d, 6, 0);
+  showProgress();
+  tick = showProgress;
+  jobDone = jobEnded;
+}
+
+// -------------------------------------------------------------------------------------------- a song ---
+static void songInTapped(lv_event_t* e) {
+  if (!sure(e, "Sure? It replaces its song")) {
+    return;
+  }
+  if (!jobs::sloopSongIn(soundsDev(), chosen)) {
+    toast("Busy: try again in a moment.", true);
+  }
+  showProgress();
+}
+
+static void deleteSongTapped(lv_event_t* e) {
+  if (!sure(e, "Sure?")) {
+    return;
+  }
+  if (remove(catalog::path(std::string(SLOOP_SONGS_DIR "/") + chosen).c_str())) {
+    toast("Can't delete it.", true);
+    return;
+  }
+  toast("Deleted.");
+  go(sloopPage);
+}
+
+static void songFilePage(lv_obj_t* page) {
+  const Theme& t = theme();
+  shown = songFilePage;
+  header(page, chosen.c_str(), sloopPage);
+  lv_obj_t* body = scroller(page);
+  lv_obj_set_style_pad_row(body, 4, 0);
+  status = bar = 0;
+  sloop::Song s;
+  std::string why;
+  if (!sloop::readSong(chosen, s, why)) {
+    wrapped(body, why.c_str(), t.knob[0]);
+    button(body, LV_SYMBOL_TRASH "  Delete", deleteSongTapped);
+    return;
+  }
+  label(body, s.name.empty() ? chosen.c_str() : s.name.c_str(), &lv_font_montserrat_16, t.text);
+  std::string from = s.firmware.empty() ? "?" : s.firmware;
+  if (!s.date.empty()) {
+    from += "   " + s.date.substr(0, 10);
+  }
+  label(body, from.c_str(), &lv_font_montserrat_14, t.dim);
+  wrapped(body, sloop::songSummary(s).c_str(), t.dim);
+  if (!device(body)) {
+    return;
+  }
+  lv_obj_t* r = button(body, LV_SYMBOL_UPLOAD "  Load it", songInTapped);
+  lv_obj_add_state(r, LV_STATE_CHECKED);
+  wrapped(body,
+          devText("Its loop, sections A-D and their order replace the FM-1's (stop the song on it first). The song it "
+                  "has is saved first, to go back to.")
+              .c_str(),
+          t.dim);
+  progressBox(body);
+  lv_obj_t* d = button(body, LV_SYMBOL_TRASH "  Delete the song", deleteSongTapped);
   lv_obj_set_style_margin_top(d, 6, 0);
   showProgress();
   tick = showProgress;

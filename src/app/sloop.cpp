@@ -97,7 +97,9 @@ static bool has(const std::string& s, const char* word) {
 }
 
 bool sloop::Info::sloop() const {
-  return has(version, "SLOOP");
+  // Kitten Synths is SLOOP with more in it, built as SLOOP's --release builds are: it says only "FELUCCA 2.8-KITTEN
+  // BETA". (Not by its protocol number: Felucca sends something else there, and its command 34 isn't BK_LIST)
+  return has(version, "SLOOP") || has(version, "KITTEN");
 }
 
 bool sloop::parseInfo(const uint8_t* a, uint32_t n, Info& out) {
@@ -199,9 +201,8 @@ static bool ends(const std::string& s, const char* e) {
   return s.size() > k && !strcasecmp(s.c_str() + s.size() - k, e);
 }
 
-std::vector<std::string> sloop::backups() {
-  auto v = listDir(catalog::path(SLOOP_DIR), [](const std::string& n, bool dir) { return !dir && ends(n, ".json"); });
-  // the newest first: by the number in the name, then the name
+// the newest first: by the number in the name, then the name
+static void newestFirst(std::vector<std::string>& v) {
   auto num = [](const std::string& s) {
     size_t i = s.find_first_of("0123456789");
     return i == std::string::npos ? 0L : atol(s.c_str() + i);
@@ -209,6 +210,19 @@ std::vector<std::string> sloop::backups() {
   std::sort(v.begin(), v.end(), [&](const std::string& a, const std::string& b) {
     return num(a) != num(b) ? num(a) > num(b) : a > b;
   });
+}
+
+std::vector<std::string> sloop::backups() {
+  auto v = listDir(catalog::path(SLOOP_DIR), [](const std::string& n, bool dir) { return !dir && ends(n, ".json"); });
+  newestFirst(v);
+  return v;
+}
+
+std::vector<std::string> sloop::songs() {
+  auto v = listDir(catalog::path(SLOOP_SONGS_DIR), [](const std::string& n, bool dir) {
+    return !dir && (ends(n, ".sloopsong") || ends(n, ".json"));
+  });
+  newestFirst(v);
   return v;
 }
 
@@ -233,6 +247,22 @@ static bool loadFile(const std::string& path, std::vector<char>& out) {
   return ok;
 }
 
+// the objects of a backup or song file: each checked against its length and CRC; known says which ids it may have
+static bool readObjects(JsonArray a, bool (*known)(int), std::vector<sloop::Object>& out, std::string& why) {
+  for (JsonObject o : a) {
+    sloop::Object obj;
+    obj.id = o["id"] | -1;
+    uint32_t len = o["len"] | 0u, crc = o["crc"] | 0u;
+    if (!known(obj.id) || !unbase64(o["data"] | "", obj.data) || obj.data.size() != len ||
+        crc32(obj.data.data(), obj.data.size()) != crc) {
+      why = "It's damaged: " + sloop::objectName(obj.id) + " doesn't match its CRC.";
+      return false;
+    }
+    out.push_back(std::move(obj));
+  }
+  return true;
+}
+
 bool sloop::read(const std::string& name, Backup& out, std::string& why) {
   out = Backup();
   std::vector<char> text;
@@ -251,23 +281,68 @@ bool sloop::read(const std::string& name, Backup& out, std::string& why) {
   }
   out.firmware = doc["firmware"] | "";
   out.date = doc["date"] | "";
-  for (JsonObject o : doc["objects"].as<JsonArray>()) {
-    Object obj;
-    obj.id = o["id"] | -1;
-    uint32_t len = o["len"] | 0u, crc = o["crc"] | 0u;
-    bool known = (obj.id >= 0 && obj.id < 12) || (obj.id >= 32 && obj.id < 36);
-    if (!known || !unbase64(o["data"] | "", obj.data) || obj.data.size() != len ||
-        crc32(obj.data.data(), obj.data.size()) != crc) {
-      why = "It's damaged: " + objectName(obj.id) + " doesn't match its CRC.";
-      return false;
-    }
-    out.objects.push_back(std::move(obj));
+  auto known = [](int id) { return (id >= 0 && id < 12) || (id >= 32 && id < 36); };
+  if (!readObjects(doc["objects"].as<JsonArray>(), known, out.objects, why)) {
+    return false;
   }
   if (!out.get(0) || !out.get(1)) {
     why = "It's incomplete (no working project or settings).";
     return false;
   }
   return true;
+}
+
+#define ORDER_OFF 48  // the song order in the settings (SLOOP's arranger.h arr_config_t)
+#define ORDER_LEN 36
+
+// settings with the magic SLOOP checks ("PER3", low byte first), and room for the order
+static bool orderOk(const std::vector<uint8_t>& s) {
+  return s.size() >= ORDER_OFF + ORDER_LEN && !memcmp(s.data(), "3REP", 4);
+}
+
+bool sloop::readSong(const std::string& name, Song& out, std::string& why) {
+  out = Song();
+  std::vector<char> text;
+  if (!loadFile(catalog::path(std::string(SLOOP_SONGS_DIR "/") + name), text)) {
+    why = "Can't read it from the SD card.";
+    return false;
+  }
+  JsonDocument doc;
+  if (deserializeJson(doc, text.data())) {
+    why = "It isn't a SLOOP song (not JSON).";
+    return false;
+  }
+  if (strcmp(doc["format"] | "", "sloop-song") || (doc["version"] | 0) < 1 || !doc["objects"].is<JsonArray>()) {
+    why = "It isn't a SLOOP song.";
+    return false;
+  }
+  out.name = doc["name"] | "";
+  out.firmware = doc["firmware"] | "";
+  out.date = doc["date"] | "";
+  auto known = [](int id) { return id == 0 || (id >= 2 && id <= 5); };
+  if (!readObjects(doc["objects"].as<JsonArray>(), known, out.objects, why)) {
+    return false;
+  }
+  if (!out.get(0)) {
+    why = "It's incomplete (no loop).";
+    return false;
+  }
+  if (doc["order"].is<const char*>() && (!unbase64(doc["order"] | "", out.order) || out.order.size() != ORDER_LEN)) {
+    why = "It's damaged: its order isn't right.";
+    return false;
+  }
+  return true;
+}
+
+std::string sloop::songSummary(const Song& s) {
+  std::string sections;
+  for (const Object& o : s.objects) {
+    if (o.id >= 2 && o.id <= 5 && !o.data.empty()) {
+      sections += std::string(sections.empty() ? "" : " ") + (char)('A' + o.id - 2);
+    }
+  }
+  std::string out = sections.empty() ? "the loop, no sections" : "the loop, sections " + sections;
+  return out + (s.order.empty() ? "" : ", and their order");
 }
 
 std::string sloop::summary(const Backup& b) {
@@ -289,33 +364,38 @@ std::string sloop::summary(const Backup& b) {
   return s;
 }
 
-static bool writeBackup(const sloop::Backup& b, const char* prefix, std::string& saved) {
-  std::string dir = catalog::path(SLOOP_DIR);
+// a JSON string ("..." with its escapes)
+static std::string jsonString(const std::string& s) {
+  JsonDocument d;
+  d.set(s);
+  std::string out;
+  serializeJson(d, out);
+  return out;
+}
+
+// a new file in where: prefix-N.ext (its name into saved), head (the fields before "objects", each followed by ", "),
+// then the objects. Written out by hand: the data is big, and ArduinoJson would hold all of it twice
+static bool writeFile(const char* where, const char* prefix, const char* ext, const std::string& head,
+                      const std::vector<sloop::Object>& objects, std::string& saved) {
+  std::string dir = catalog::path(where);
   if (dir.empty()) {
     return false;
   }
+  mkdir(catalog::path(SLOOP_DIR).c_str(), 0777);
   mkdir(dir.c_str(), 0777);
   struct stat st;
   int n = 1;
-  while (n < 10000 && !stat((dir + "/" + prefix + "-" + std::to_string(n) + ".json").c_str(), &st)) {
+  while (n < 10000 && !stat((dir + "/" + prefix + "-" + std::to_string(n) + ext).c_str(), &st)) {
     n++;
   }
-  saved = std::string(prefix) + "-" + std::to_string(n) + ".json";
+  saved = std::string(prefix) + "-" + std::to_string(n) + ext;
   FILE* f = fopen((dir + "/" + saved).c_str(), "wb");
   if (!f) {
     return false;
   }
-  // written out by hand: the data is big, and ArduinoJson would hold all of it twice
-  JsonDocument head;
-  head["firmware"] = b.firmware;
-  head["date"] = b.date;
-  std::string firmware, date;
-  serializeJson(head["firmware"], firmware);
-  serializeJson(head["date"], date);
-  bool ok = fprintf(f, "{\"format\": \"sloop-backup\", \"version\": 1, \"firmware\": %s, \"date\": %s, \"objects\": [",
-                    firmware.c_str(), date.c_str()) > 0;
-  for (size_t i = 0; i < b.objects.size() && ok; i++) {
-    const sloop::Object& o = b.objects[i];
+  bool ok = fprintf(f, "{%s\"objects\": [", head.c_str()) > 0;
+  for (size_t i = 0; i < objects.size() && ok; i++) {
+    const sloop::Object& o = objects[i];
     std::string data = base64(o.data.data(), o.data.size());
     ok = fprintf(f, "%s\n  {\"id\": %d, \"len\": %u, \"crc\": %u, \"data\": \"%s\"}", i ? "," : "", o.id,
                  (unsigned)o.data.size(), (unsigned)crc32(o.data.data(), o.data.size()), data.c_str()) > 0;
@@ -328,68 +408,99 @@ static bool writeBackup(const sloop::Backup& b, const char* prefix, std::string&
   return ok;
 }
 
-// --------------------------------------------------------------------------------------------- backup ---
-const char* sloop::backup(int d, const Info& info, std::string& saved, Progress p, const char* prefix) {
-  if (info.proto < 6) {
-    return "Backups need SLOOP 2.3 or later.";
+// now, as SLOOP's files have it ("2026-11-10T02:31:16Z"); "" without the clock set (the board has none until
+// something sets it)
+static std::string isoNow() {
+  time_t now = time(0);
+  if (now <= 1600000000) {
+    return "";
   }
+  char iso[32];
+  strftime(iso, sizeof iso, "%Y-%m-%dT%H:%M:%SZ", gmtime(&now));
+  return iso;
+}
+
+// ------------------------------------------------------------------------------------------- reading ---
+struct Item {
+  int id;
+  uint32_t len, crc;
+};
+
+// what it has (BK_LIST)
+static const char* list(int d, std::vector<Item>& items) {
   std::vector<uint8_t> r;
+  items.clear();
   if (!request(d, BK_LIST, {}, r, 5000, 1) || r.size() < 2) {
     return "The FM-1 didn't list what it has.";
   }
   if (r[0]) {
     return rcText(r[0]);
   }
-  struct Item {
-    int id;
-    uint32_t len, crc;
-  };
-  std::vector<Item> items;
-  uint32_t total = 0;
   for (size_t i = 2, k = 0; k < r[1] && i + 11 <= r.size(); k++, i += 11) {
     items.push_back({r[i], u35(&r[i + 1]), u35(&r[i + 6])});
-    total += items.back().len;
+  }
+  return 0;
+}
+
+// one object, whole (BK_GET), checked against its CRC
+static const char* get(int d, const Item& it, sloop::Object& o, uint32_t& done, uint32_t total, sloop::Progress p) {
+  std::vector<uint8_t> r;
+  o.id = it.id;
+  o.data.clear();
+  for (uint32_t off = 0; off < it.len; off += 256) {
+    uint32_t n = it.len - off < 256 ? it.len - off : 256;
+    std::vector<uint8_t> args = {(uint8_t)it.id};
+    u35(off, args);
+    args.push_back((uint8_t)(n & 0x7F));
+    args.push_back((uint8_t)(n >> 7));
+    if (!request(d, BK_GET, args, r, 1500, 3) || r.size() < 9 || r[0] != it.id) {
+      return "The FM-1 stopped answering: keep it plugged in and try again.";
+    }
+    if (r[1]) {
+      return r[1] == 5 ? "The FM-1 changed while it was read: try again." : "The FM-1 didn't give it.";
+    }
+    std::vector<uint8_t> data = unpack7(r.data() + 9, r.size() - 9);
+    if (data.size() < n) {
+      return "The FM-1 gave less than it said.";
+    }
+    o.data.insert(o.data.end(), data.begin(), data.begin() + n);
+    done += n;
+    if (p) {
+      p(done, total);
+    }
+  }
+  if (crc32(o.data.data(), o.data.size()) != it.crc) {
+    return "What came doesn't match its CRC: try again.";
+  }
+  return 0;
+}
+
+// --------------------------------------------------------------------------------------------- backup ---
+const char* sloop::backup(int d, const Info& info, std::string& saved, Progress p, const char* prefix) {
+  if (info.proto < 6) {
+    return "Backups need SLOOP 2.3 or later.";
+  }
+  std::vector<Item> items;
+  if (const char* e = list(d, items)) {
+    return e;
+  }
+  uint32_t total = 0, done = 0;
+  for (const Item& it : items) {
+    total += it.len;
   }
   Backup b;
   b.firmware = info.version;
-  time_t now = time(0);
-  if (now > 1600000000) {  // (only with the clock set: the board has none until something sets it)
-    char iso[32];
-    strftime(iso, sizeof iso, "%Y-%m-%dT%H:%M:%SZ", gmtime(&now));
-    b.date = iso;
-  }
-  uint32_t done = 0;
+  b.date = isoNow();
   for (const Item& it : items) {
     Object o;
-    o.id = it.id;
-    for (uint32_t off = 0; off < it.len; off += 256) {
-      uint32_t n = it.len - off < 256 ? it.len - off : 256;
-      std::vector<uint8_t> args = {(uint8_t)it.id};
-      u35(off, args);
-      args.push_back((uint8_t)(n & 0x7F));
-      args.push_back((uint8_t)(n >> 7));
-      if (!request(d, BK_GET, args, r, 1500, 3) || r.size() < 9 || r[0] != it.id) {
-        return "The FM-1 stopped answering: keep it plugged in and try again.";
-      }
-      if (r[1]) {
-        return r[1] == 5 ? "The FM-1 changed while it was read: try again." : "The FM-1 didn't give it.";
-      }
-      std::vector<uint8_t> data = unpack7(r.data() + 9, r.size() - 9);
-      if (data.size() < n) {
-        return "The FM-1 gave less than it said.";
-      }
-      o.data.insert(o.data.end(), data.begin(), data.begin() + n);
-      done += n;
-      if (p) {
-        p(done, total);
-      }
-    }
-    if (crc32(o.data.data(), o.data.size()) != it.crc) {
-      return "What came doesn't match its CRC: try again.";
+    if (const char* e = get(d, it, o, done, total, p)) {
+      return e;
     }
     b.objects.push_back(std::move(o));
   }
-  if (!writeBackup(b, prefix, saved)) {
+  std::string head = "\"format\": \"sloop-backup\", \"version\": 1, \"firmware\": " + jsonString(b.firmware) +
+                     ", \"date\": " + jsonString(b.date) + ", ";
+  if (!writeFile(SLOOP_DIR, prefix, ".json", head, b.objects, saved)) {
     return "Can't write it to the SD card.";
   }
   hal::log("sloop: %s: %u objects, %u bytes", saved.c_str(), (unsigned)b.objects.size(), (unsigned)total);
@@ -589,6 +700,130 @@ const char* sloop::loadProject(int d, const std::string& name, int from, int to,
   }
   uint32_t done = 0;
   return put(d, to, o->data, done, (uint32_t)o->data.size(), p);
+}
+
+// ------------------------------------------------------------------------------------------------ songs ---
+// the number the next prefix-N.ext in where gets
+static int nextNumber(const char* where, const char* prefix, const char* ext) {
+  std::string dir = catalog::path(where);
+  struct stat st;
+  int n = 1;
+  while (n < 10000 && !dir.empty() && !stat((dir + "/" + prefix + "-" + std::to_string(n) + ext).c_str(), &st)) {
+    n++;
+  }
+  return n;
+}
+
+const char* sloop::saveSong(int d, const Info& info, std::string& saved, Progress p, const char* prefix) {
+  if (info.proto < 6) {
+    return "Songs need SLOOP 2.3 or later.";
+  }
+  std::vector<Item> items, want;
+  if (const char* e = list(d, items)) {
+    return e;
+  }
+  // the loop, the settings (for the order), and the sections in use (as SLOOP's editor: an empty one isn't in it)
+  uint32_t total = 0, done = 0;
+  for (const Item& it : items) {
+    if (it.id == 0 || it.id == 1 || (it.id >= 2 && it.id <= 5 && it.len)) {
+      want.push_back(it);
+      total += it.len;
+    }
+  }
+  Song s;
+  std::vector<uint8_t> order;
+  for (const Item& it : want) {
+    Object o;
+    if (const char* e = get(d, it, o, done, total, p)) {
+      return e;
+    }
+    if (it.id == 1) {
+      if (orderOk(o.data)) {
+        order.assign(o.data.begin() + ORDER_OFF, o.data.begin() + ORDER_OFF + ORDER_LEN);
+      }
+    } else {
+      s.objects.push_back(std::move(o));
+    }
+  }
+  if (!s.get(0)) {
+    return "The FM-1 has no loop to save.";
+  }
+  // its name, as SLOOP's editor shows it ("SONG 3", "BEFORE SONG 2"): the file's
+  std::string name;
+  for (const char* c = prefix; *c; c++) {
+    name += *c == '-' ? ' ' : (char)toupper((unsigned char)*c);
+  }
+  name += " " + std::to_string(nextNumber(SLOOP_SONGS_DIR, prefix, ".sloopsong"));
+  std::string head = "\"format\": \"sloop-song\", \"version\": 1, \"name\": " + jsonString(name) +
+                     ", \"firmware\": " + jsonString(info.version) + ", \"date\": " + jsonString(isoNow()) + ", \"order\": " +
+                     (order.empty() ? std::string("null") : "\"" + base64(order.data(), order.size()) + "\"") + ", ";
+  if (!writeFile(SLOOP_SONGS_DIR, prefix, ".sloopsong", head, s.objects, saved)) {
+    return "Can't write it to the SD card.";
+  }
+  hal::log("sloop: %s: %u objects, %u bytes", saved.c_str(), (unsigned)s.objects.size(), (unsigned)total);
+  return 0;
+}
+
+const char* sloop::loadSong(int d, const std::string& name, std::string& savedFirst, Progress p) {
+  Song s;
+  std::string why;
+  static std::string w;
+  if (!readSong(name, s, why)) {
+    w = why;
+    return w.c_str();
+  }
+  Info info;
+  if (const char* e = sloop::info(d, info)) {
+    return e;
+  }
+  if (info.proto < 6) {
+    return "Songs need SLOOP 2.3 or later.";
+  }
+  if (const char* e = newer(s, info)) {
+    return e;
+  }
+  // the song it has, first: to go back to
+  if (const char* e = saveSong(d, info, savedFirst, 0, "before-song")) {
+    return e;
+  }
+  static const std::vector<uint8_t> none;
+  uint32_t total = 0, done = 0;
+  for (const Object& o : s.objects) {
+    total += (uint32_t)o.data.size();
+  }
+  // the sections (one not in it: emptied), then the loop
+  for (int id : {2, 3, 4, 5, 0}) {
+    const Object* o = s.get(id);
+    if (const char* e = put(d, id, o ? o->data : none, done, total, p)) {
+      return e;
+    }
+  }
+  // the order, into the settings as the FM-1 has them (its colours, calibration ... kept)
+  if (!s.order.empty()) {
+    std::vector<Item> items;
+    if (const char* e = list(d, items)) {
+      return e;
+    }
+    for (const Item& it : items) {
+      if (it.id != 1) {
+        continue;
+      }
+      Object settings;
+      uint32_t got = 0;
+      if (const char* e = get(d, it, settings, got, it.len, 0)) {
+        return e;
+      }
+      if (orderOk(settings.data)) {
+        memcpy(settings.data.data() + ORDER_OFF, s.order.data(), ORDER_LEN);
+        uint32_t put1 = 0;
+        if (const char* e = put(d, 1, settings.data, put1, (uint32_t)settings.data.size(), 0)) {
+          return e;
+        }
+      }
+    }
+  }
+  hal::log("sloop: song %s loaded (%s)", name.c_str(), songSummary(s).c_str());
+  return 0;
 }
 
 // ---------------------------------------------------------------------------------------------- samples ---

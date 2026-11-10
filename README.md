@@ -21,7 +21,7 @@ All without a computer/phone/etc:
 - USB MIDI for a computer: plugged straight into one, it's a class-compliant USB MIDI device (Settings > On a computer), so the touch controller, clock and Bluetooth MIDI devices reach your DAW, and the DAW can play them
 - Warns before you install firmware with no backup of the FM-1 on the SD card, with a button to make one
 - Sample-management (folders of WAV to its sample-banks, and back)
-- SLOOP (2.3+): back it up in SLOOP's own file (they open in its web editor, and its backups open here), restore one, load a single project from one, and load folders of WAVs into its sample slots. The Manager page says what the firmware on the FM-1 can do, and what to install for more
+- SLOOP (2.3+, and Kitten Synths): back it up in SLOOP's own file (they open in its web editor, and its backups open here), restore one, load a single project from one, save its song as a .sloopsong (the loop, sections A-D and their order, as SLOOP's editor exports them) and load those back, and load folders of WAVs into its sample slots. The Manager page says what the firmware on the FM-1 can do, and what to install for more
 - Sample slots on Felucca and the firmwares built on it that kept them (Skiff, JIANT, Melodee, ...): load a folder of WAVs (or one WAV) from `/sloop/samples` into USR1-3, for its SAMPLE engine. fomajam's drum kits load from setups
 - Act as USB disk (to manage files on SD)
 - MIDI-out, turn FM1 into a sequencer (on supported firmware, like [fomajam](https://github.com/konsumer/fomajam))

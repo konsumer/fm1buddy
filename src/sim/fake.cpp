@@ -50,6 +50,7 @@ static struct {
   bool fomajam, playing;
   bool sloop;      // it runs SLOOP (its editor protocol: sloopAnswer)
   bool felucca;    // ... or plain Felucca (the same, but 3 sample slots, no backups)
+  bool kitten;     // ... or Kitten Synths (SLOOP, saying only "FELUCCA 2.8-KITTEN BETA")
   bool lostCal;    // its flash's SMK-37 calibration sector is blank (an SMK-37 that lost it: it looks like an FM-1)
   bool smk;        // it's an SMK-37 Elite on its stock firmware (the FM-1's chip and update, its own name)
   bool bigscreen;  // its firmware has Big Screen: it sends its screen while asked (mirror.h)
@@ -464,7 +465,8 @@ static bool sloopAnswer(const uint8_t* b, uint32_t n) {
   uint32_t an = n - 6;
   std::vector<uint8_t> r;
   if (cmd == 1) {  // INFO: version, NENGINES, P_COUNT, G_COUNT, NSTEP, P_E0, the engines, NTRK, protocol
-    const char* v = f.felucca ? "FELUCCA v1.6.1" : "FELUCCA SLOOP 2.8";
+    const char* v = f.felucca ? "FELUCCA v1.6.1" : f.kitten ? "FELUCCA 2.8-KITTEN BETA"
+                                                            : "FELUCCA SLOOP 2.8";
     r.insert(r.end(), v, v + strlen(v) + 1);
     r.insert(r.end(), {11, 71, 45, 64, 63});
     for (int e = 0; e < 11; e++) {
@@ -576,6 +578,10 @@ static bool sloopAnswer(const uint8_t* b, uint32_t n) {
 
 void fake::sloopMode(bool on) {
   f.sloop = on;
+}
+
+void fake::kittenMode(bool on) {
+  f.sloop = f.kitten = on;
 }
 
 void fake::feluccaMode(bool on) {

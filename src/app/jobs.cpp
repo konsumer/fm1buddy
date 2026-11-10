@@ -51,7 +51,7 @@ static void progress(uint32_t d, uint32_t t) {
 
 static const char* NAMES[] = {"none", "hub", "download", "scan", "join", "install", "probe", "send", "voice", "keep",
                               "restore", "export", "backup", "prepare", "recover", "sloop backup", "sloop restore",
-                              "sloop project", "sloop samples", "identify", "check update", "update"};
+                              "sloop project", "sloop song", "sloop song in", "sloop samples", "identify", "check update", "update"};
 static_assert(sizeof NAMES / sizeof *NAMES == UPDATE + 1, "a name for each job");
 
 // a conversation in SysEx with the FM-1: routing stops meanwhile (its replies aren't for the other devices, and a
@@ -1168,6 +1168,16 @@ static void sloopJob(void*) {
   } else if (kind == SLOOP_PROJECT) {
     doing = "Loading the project";
     e = sloop::loadProject(device, sloopFile, sloopFrom, sloopTo, progress);
+  } else if (kind == SLOOP_SONG) {
+    doing = "Saving the song";
+    sloop::Info info;
+    e = sloop::info(device, info);
+    if (!e) {
+      e = sloop::saveSong(device, info, saved, progress);
+    }
+  } else if (kind == SLOOP_SONG_IN) {
+    doing = "Saving its song, then loading";
+    e = sloop::loadSong(device, sloopFile, saved, progress);
   } else {
     doing = "Loading the samples";
     e = sloop::loadSamples(device, sloopFile, sloopTo, progress);
@@ -1199,6 +1209,14 @@ bool jobs::sloopRestore(int d, const std::string& file) {
 
 bool jobs::sloopProject(int d, const std::string& file, int from, int to) {
   return sloopStart(SLOOP_PROJECT, d, file, from, to);
+}
+
+bool jobs::sloopSong(int d) {
+  return sloopStart(SLOOP_SONG, d, "", 0, 0);
+}
+
+bool jobs::sloopSongIn(int d, const std::string& file) {
+  return sloopStart(SLOOP_SONG_IN, d, file, 0, 0);
 }
 
 bool jobs::sloopSamples(int d, const std::string& source, int slot) {

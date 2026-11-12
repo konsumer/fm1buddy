@@ -686,7 +686,7 @@ static void downloaded() {
     return;
   }
   if (k == jobs::FW_UPDATE) {
-    int i = jobs::ok ? sdIndex(updTo.file) : -1;
+    int i = jobs::ok ? sdIndex(jobs::saved) : -1;
     if (i >= 0) {
       sel = catalog::details(catalog::sd, i);
       updFor = sel.file;
@@ -706,7 +706,11 @@ static void downloaded() {
     return;
   }
   if (jobs::ok) {
-    toast(jobs::kind == jobs::INSTALL ? "Installed." : "Saved to the SD card.");
+    bool renamed = jobs::saved != sel.file;
+    toast(jobs::kind == jobs::INSTALL ? "Installed."
+          : renamed                   ? ("Saved to the SD card as " + jobs::saved + ".").c_str()
+                                      : "Saved to the SD card.");
+    sel.file = jobs::saved;
     sel.onSd = true;
   } else {
     toast(devText(jobs::error).c_str(), true);

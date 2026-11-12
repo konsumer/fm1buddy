@@ -50,11 +50,13 @@ struct Info {
 Info describe(const std::vector<uint8_t>& data);
 
 struct File {
-  std::string name;  // "bank.syx"
+  std::string name;  // "bank.syx", or a folder's "drums"
   uint32_t size;
+  bool folder;
 };
-// the .syx files on the SD card, by name
-std::vector<File> list();
+// what's in a folder of /syx ("": /syx itself, else "drums" or "drums/909"): its folders, then its .syx files, by name
+std::vector<File> list(const std::string& folder = "");
+// name: its path in /syx ("bank.syx", "drums/909.syx")
 bool load(const std::string& name, std::vector<uint8_t>& out);
 // as /syx/<prefix>-N.syx (the next N); "" if it didn't save
 std::string save(const std::vector<uint8_t>& data, const char* prefix);

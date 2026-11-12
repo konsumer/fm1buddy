@@ -342,25 +342,75 @@ static bool fetch() {
   return false;
 }
 
+// a name in /fm1 for target that no other firmware has (the Hub has a few with the same file name: one mustn't replace
+// another). Its own, if that's free or the very same file is there; else with its version ("felucca-1.0.0.fwsc"),
+// then -a, -b, ... ("felucca-1.0.0-a.fwsc"). keep: a file it may replace anyway (FW_UPDATE: the old one)
+static bool sameFile(const std::string& p) {
+  struct stat st;
+  char sum[65];
+  return !stat(p.c_str(), &st) && (uint32_t)st.st_size == target.size && hal::sha256(p.c_str(), sum) &&
+         !strcasecmp(sum, target.sha256.c_str());
+}
+
+static std::string freeName(const std::string& file, const std::string& keep = "") {
+  size_t slash = file.rfind('/');
+  std::string folder = slash == std::string::npos ? "" : file.substr(0, slash + 1);
+  std::string base = file.substr(folder.size()), ext;
+  if (base.size() > 5 && !strcasecmp(base.c_str() + base.size() - 5, ".fwsc")) {
+    ext = base.substr(base.size() - 5);
+    base.resize(base.size() - 5);
+  }
+  std::string v;  // (its version, as a file name can have it)
+  for (char c : target.version) {
+    v += isalnum((unsigned char)c) || c == '.' || c == '_' || c == '-' ? c : '-';
+  }
+  std::string lower = base, lv = v;
+  std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+  std::transform(lv.begin(), lv.end(), lv.begin(), ::tolower);
+  std::vector<std::string> names{base};
+  std::string withV = v.empty() || lower.find(lv) != std::string::npos ? base : base + "-" + v;
+  if (withV != base) {
+    names.push_back(withV);
+  }
+  for (char c = 'a'; c <= 'z'; c++) {
+    names.push_back(withV + "-" + c);
+  }
+  for (const std::string& n : names) {
+    std::string rel = folder + n + ext, p = catalog::path(FW_DIR "/" + rel);
+    struct stat st;
+    if (rel == keep || stat(p.c_str(), &st) || sameFile(p)) {
+      if (rel != file) {
+        hal::log("job: %s is another firmware's on the SD card: %s", file.c_str(), rel.c_str());
+      }
+      return rel;
+    }
+  }
+  return file;  // (27 others of that name: it's replaced)
+}
+
 static void downloadJob(void*) {
-  finish(fetch());
+  target.file = freeName(target.file);
+  bool ok = fetch();
+  saved = target.file;
+  finish(ok);
 }
 
 static std::string oldFile;  // FW_UPDATE: what the new one replaces
 
 static void fwUpdateJob(void*) {
-  std::string file = target.file, dir = catalog::path(FW_DIR "/");
-  target.file += ".part";  // (old stays until the new one is checked, even with the same name)
+  std::string file = freeName(target.file, oldFile), dir = catalog::path(FW_DIR "/");
+  target.file = file + ".part";  // (old stays until the new one is checked, even with the same name)
   if (!fetch()) {
     remove((dir + target.file).c_str());
     return finish(false);
   }
   remove((dir + oldFile).c_str());
+  remove((dir + file).c_str());  // (the very same file, if it's there: freeName)
   if (rename((dir + target.file).c_str(), (dir + file).c_str())) {
     error = "Can't name it " + file + " on the SD card.";
     return finish(false);
   }
-  target.file = file;
+  target.file = saved = file;
   hal::log("job: %s replaced by %s", oldFile.c_str(), file.c_str());
   finish(true);
 }
@@ -397,9 +447,13 @@ static FILE* newRecord(std::string& name) {
 }
 
 static void installJob(void*) {
-  if (!target.onSd && !fetch()) {
-    return finish(false);
+  if (!target.onSd) {
+    target.file = freeName(target.file);
+    if (!fetch()) {
+      return finish(false);
+    }
   }
+  saved = target.file;
   step = CHECKING;
   Pkg pkg;
   if (const char* e = pkg.open(catalog::path(std::string(FW_DIR "/") + target.file).c_str())) {

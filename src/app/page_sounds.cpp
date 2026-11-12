@@ -24,10 +24,11 @@ static sounds::Speaks speaks;
 static bool recording;
 static uint32_t shownSeq;
 static lv_obj_t *status, *recLabel;
-static bool asking;        // the chips wait for a probe
-static std::string sel;    // the file shown
-static std::string setup;  // the setup shown
-static bool sure;          // send, load: tapped once
+static bool asking;         // the chips wait for a probe
+static std::string sel;     // the file shown: its path in /syx ("drums/909.syx")
+static std::string folder;  // the folder of /syx shown ("": /syx itself, else "drums" or "drums/909")
+static std::string setup;   // the setup shown
+static bool sure;           // send, load: tapped once
 
 // the device: the one picked if it's still there; else the FM-1; else the first one
 int ui::soundsDev() {
@@ -108,6 +109,79 @@ static void finishRecording(bool keep) {
   }
 }
 
+// ---------------------------------------------------------------------------------------- folders ---
+static std::string parentOf(const std::string& f) {
+  size_t k = f.rfind('/');
+  return k == std::string::npos ? "" : f.substr(0, k);
+}
+
+static std::string nameOf(const std::string& f) {
+  size_t k = f.rfind('/');
+  return k == std::string::npos ? f : f.substr(k + 1);
+}
+
+static void folderPage(lv_obj_t* page);
+
+// back from a folder: the one it's in
+static void upPage(lv_obj_t* page) {
+  folder = parentOf(folder);
+  if (folder.empty()) {
+    ui::soundsPage(page);
+  } else {
+    folderPage(page);
+  }
+}
+
+// back from a file: the folder it's in
+static void filesPage(lv_obj_t* page) {
+  if (folder.empty()) {
+    ui::soundsPage(page);
+  } else {
+    folderPage(page);
+  }
+}
+
+static void openFile(lv_event_t* e) {
+  sel = *(std::string*)lv_event_get_user_data(e);
+  sure = false;
+  go(syxPage);
+}
+
+static void openFolder(lv_event_t* e) {
+  folder = *(std::string*)lv_event_get_user_data(e);
+  go(folderPage);
+}
+
+// the folders and .syx files in folder, as rows
+static void fileRows(lv_obj_t* body) {
+  const Theme& t = theme();
+  static std::vector<std::string> paths;
+  paths.clear();
+  auto files = sounds::list(folder);
+  paths.reserve(files.size());
+  for (auto& f : files) {
+    paths.push_back(folder.empty() ? f.name : folder + "/" + f.name);
+    lv_obj_t* r = listRow(body, f.folder ? openFolder : openFile, &paths.back());
+    lv_obj_t* l = line(r, ((f.folder ? LV_SYMBOL_DIRECTORY "  " : "") + f.name).c_str(), &lv_font_montserrat_16, t.text);
+    lv_obj_set_flex_grow(l, 1);
+    char s[16];
+    snprintf(s, sizeof s, f.size < 10240 ? "%u B" : "%u KB", (unsigned)(f.size < 10240 ? f.size : f.size / 1024));
+    label(r, f.folder ? LV_SYMBOL_RIGHT : s, f.folder ? &lv_font_montserrat_14 : &lv_font_montserrat_12, t.dim);
+  }
+  if (files.empty()) {
+    label(body, !hal::sd() ? "No SD card." : folder.empty() ? "No .syx files yet."
+                                                            : "Nothing in it.",
+          &lv_font_montserrat_12, t.dim);
+  }
+}
+
+static void folderPage(lv_obj_t* page) {
+  header(page, nameOf(folder).c_str(), upPage);
+  lv_obj_t* body = scroller(page);
+  lv_obj_set_style_pad_row(body, 4, 0);
+  fileRows(body);
+}
+
 // --------------------------------------------------------------------------------------- the file ---
 static void sent() {
   if (jobs::kind != jobs::SEND) {
@@ -138,7 +212,7 @@ static void syxTick() {
 
 void ui::syxPage(lv_obj_t* page) {
   const Theme& t = theme();
-  header(page, sel.c_str(), soundsPage);
+  header(page, nameOf(sel).c_str(), filesPage);
   lv_obj_t* body = scroller(page);
   lv_obj_set_style_pad_row(body, 4, 0);
   std::vector<uint8_t> data;
@@ -282,12 +356,6 @@ void ui::setupPage(lv_obj_t* page) {
 }
 
 // -------------------------------------------------------------------------------------------- page ---
-static void openFile(lv_event_t* e) {
-  sel = *(std::string*)lv_event_get_user_data(e);
-  sure = false;
-  go(syxPage);
-}
-
 static void pickChanged(lv_event_t* e) {
   int i = lv_dropdown_get_selected((lv_obj_t*)lv_event_get_target(e));
   for (int d = 0; d < MIDI_TOUCH; d++) {  // (the touchscreen hears nothing)
@@ -531,22 +599,8 @@ void ui::soundsPage(lv_obj_t* page) {
   // the files
   lv_obj_t* h = label(body, "On the SD card (" SYX_DIR ")", &lv_font_montserrat_14, t.text);
   lv_obj_set_style_pad_top(h, 6, 0);
-  static std::vector<std::string> names;
-  names.clear();
-  auto files = sounds::list();
-  names.reserve(files.size());
-  for (auto& f : files) {
-    names.push_back(f.name);
-    lv_obj_t* r = listRow(body, openFile, &names.back());
-    lv_obj_t* l = line(r, f.name.c_str(), &lv_font_montserrat_16, t.text);
-    lv_obj_set_flex_grow(l, 1);
-    char s[16];
-    snprintf(s, sizeof s, f.size < 10240 ? "%u B" : "%u KB", (unsigned)(f.size < 10240 ? f.size : f.size / 1024));
-    label(r, s, &lv_font_montserrat_12, t.dim);
-  }
-  if (files.empty()) {
-    label(body, hal::sd() ? "No .syx files yet." : "No SD card.", &lv_font_montserrat_12, t.dim);
-  }
+  folder.clear();
+  fileRows(body);
   tick = soundsTick;
   jobDone = soundsDone;
 }

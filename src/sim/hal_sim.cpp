@@ -310,15 +310,20 @@ bool hal::sha256(const uint8_t* p, size_t n, char hex[65]) {
   return true;
 }
 
-bool hal::listDir(const char* path, void (*fn)(const char* name, uint32_t size, uint32_t mtime, void* arg), void* arg) {
+bool hal::listDir(const char* path, void (*fn)(const char* name, uint32_t size, uint32_t mtime, bool folder, void* arg), void* arg) {
   DIR* d = opendir(path);
   if (!d) {
     return false;
   }
   while (dirent* e = readdir(d)) {
     struct stat st;
-    if (!stat((std::string(path) + "/" + e->d_name).c_str(), &st) && S_ISREG(st.st_mode)) {
-      fn(e->d_name, st.st_size, st.st_mtime, arg);
+    if (e->d_name[0] == '.' || stat((std::string(path) + "/" + e->d_name).c_str(), &st)) {
+      continue;
+    }
+    if (S_ISDIR(st.st_mode)) {
+      fn(e->d_name, 0, 0, true, arg);
+    } else if (S_ISREG(st.st_mode)) {
+      fn(e->d_name, st.st_size, st.st_mtime, false, arg);
     }
   }
   closedir(d);

@@ -103,7 +103,8 @@ extern int device;             // PROBE, SEND, VOICE, KEEP, RESTORE: the device
 extern sounds::Speaks speaks;  // PROBE
 extern std::string saved;      // VOICE: the file it went into; KEEP: the setup; EXPORT: what it did; BACKUP, RECOVER: its
                                // backup's file; SLOOP_BACKUP: the backup; SLOOP_RESTORE: the backup made first; SLOOP_SONG: the
-                               // song file; SLOOP_SONG_IN: the song saved first
+                               // song file; SLOOP_SONG_IN: the song saved first; DOWNLOAD, INSTALL, FW_UPDATE: its file
+                               // in /fm1 (another name, if the Hub's was another firmware's on the SD card)
 
 bool hubList(bool asked = true);  // asked: the user did (else it's automatic, and doesn't pause Bluetooth MIDI)
 // a job the user asked for needed Wi-Fi, so Bluetooth MIDI paused (once, for a message)

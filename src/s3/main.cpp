@@ -6,6 +6,8 @@
 #include <esp_sleep.h>
 #include <lvgl.h>
 
+#include <atomic>
+
 #include "board.h"
 #include "display.h"
 #include "hal.h"
@@ -44,7 +46,9 @@ static int stretch(int v, int lo, int hi, int size) {
 // like a tap. The task keeps the fingers as they are now, and for LVGL what it would have missed (readTouch)
 #define TOUCH_EVERY 5
 static portMUX_TYPE touchMux = portMUX_INITIALIZER_UNLOCKED;
-static TaskHandle_t touchTaskOf;
+// hal::sleep's: the task stops between two readings (stopped), never part way through one: Wire holds its lock from
+// beginTransmission to requestFrom, and a task suspended there (issue #90) keeps it, so touch::sleep waits for ever
+static std::atomic<bool> touchStop{false}, touchStopped{false};
 static hal::Finger seen[2];  // the fingers now (the screen's pixels, calibrated)
 static int nSeen;
 static bool downSince;        // a finger was down since LVGL last read (it may be up again now)
@@ -99,6 +103,10 @@ static int readPanel(hal::Finger* out) {
 
 static void touchTask(void*) {
   for (;;) {
+    if (touchStop) {
+      touchStopped = true;
+      vTaskSuspend(0);  // (for good: the board sleeps, and wakes as a new start)
+    }
     hal::Finger f[2];
     int n = readPanel(f);
     portENTER_CRITICAL(&touchMux);
@@ -189,7 +197,13 @@ void hal::sleep() {
 #endif
   hal::log("sleep: until the screen is touched");
   board::logNow();
-  vTaskSuspend(touchTaskOf);  // (its I2C is touch::sleep's now)
+  touchStop = true;  // (its I2C is touch::sleep's now: once it has let go of it)
+  for (uint32_t t = millis(); !touchStopped && millis() - t < 500;) {
+    delay(1);
+  }
+  if (!touchStopped) {
+    hal::log("sleep: the touch task didn't stop");
+  }
   touch::sleep();
   display::sleep();
   ledcDetach(TFT_BL);
@@ -220,7 +234,7 @@ void setup() {
   lv_indev_t* in = lv_indev_create();
   lv_indev_set_type(in, LV_INDEV_TYPE_POINTER);
   lv_indev_set_read_cb(in, readTouch);
-  xTaskCreatePinnedToCore(touchTask, "touch", 3072, 0, 4, &touchTaskOf, 0);
+  xTaskCreatePinnedToCore(touchTask, "touch", 3072, 0, 4, 0, 0);
 
   ui::frame();
 

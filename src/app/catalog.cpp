@@ -504,6 +504,14 @@ Firmware catalog::details(const FwList& l, size_t i) {
   f.stock = it.flags & FwItem::STOCK;
   f.onSd = it.flags & FwItem::ON_SD;
   f.hub = it.flags & FwItem::FROM_HUB;
+  if (&l == &hub && f.onSd) {  // the copy on the SD card: where it is in /fm1 (a folder, say)
+    for (const FwItem& x : sd.items) {
+      if ((x.flags & FwItem::FROM_HUB && x.line == it.line) || (*l.str(it.sha256) && !strcasecmp(sd.str(x.sha256), l.str(it.sha256)))) {
+        f.file = sd.str(x.file);
+        break;
+      }
+    }
+  }
   for (size_t k = 0; k < l.kinds.size(); k++) {
     if (it.kinds & 1u << k) {
       f.kinds.push_back(l.kinds[k]);
@@ -605,9 +613,11 @@ static bool isPkg(const char* name) {
   return name[0] != '.' && n > 5 && !strcasecmp(name + n - 5, ".fwsc");
 }
 
-// the packages in a folder: their names (one block of text, each with its 0), sizes and times. A read of the card can
-// fail (one did, in /fm1, while the internal RAM was short: the listing ended early), so it's read again, up to 3
-// times. whole: false if the last try failed too
+// the packages in /fm1 and its folders (FOLDER_DEPTH deep): their paths in /fm1 ("zp12.fwsc", "drums/x.fwsc": one
+// block of text, each with its 0), sizes and times. A read of the card can fail (one did, in /fm1, while the internal
+// RAM was short: the listing ended early), so a folder is read again, up to 3 times. whole: false if a last try failed
+#define FOLDER_DEPTH 4
+#define FOLDERS_MAX 200
 struct SdFile {
   uint32_t name, size, mtime;
 };
@@ -615,28 +625,48 @@ struct SdFiles {
   std::vector<SdFile> list;
   std::string names;
 };
+struct Listing {
+  SdFiles* out;
+  std::vector<std::string>* folders;  // still to read
+  const std::string* at;              // the folder being read ("": /fm1)
+  int depth;
+};
 
 static bool listPkgs(const std::string& dir, SdFiles& out) {
-  for (int tries = 1; tries <= 3; tries++) {
-    out.list.clear();
-    out.list.reserve(512);  // (in the PSRAM)
-    out.names.clear();
-    bool whole = hal::listDir(
-        dir.c_str(),
-        [](const char* name, uint32_t size, uint32_t mtime, void* arg) {
-          if (isPkg(name)) {
-            SdFiles& o = *(SdFiles*)arg;
-            o.list.push_back({(uint32_t)o.names.size(), size, mtime});
-            o.names.append(name, strlen(name) + 1);
-          }
-        },
-        &out);
-    if (whole) {
-      return true;
+  out.list.clear();
+  out.list.reserve(512);  // (in the PSRAM)
+  out.names.clear();
+  std::vector<std::string> folders{""};
+  bool whole = true;
+  for (size_t f = 0; f < folders.size(); f++) {
+    const std::string at = folders[f];
+    const size_t n = out.list.size(), c = out.names.size(), k = folders.size();
+    Listing l{&out, &folders, &at, at.empty() ? 1 : 2 + (int)std::count(at.begin(), at.end(), '/')};
+    bool ok = false;
+    for (int tries = 1; !ok && tries <= 3; tries++) {
+      out.list.resize(n), out.names.resize(c), folders.resize(k);  // (what a failed try got)
+      ok = hal::listDir(
+          (at.empty() ? dir : dir + "/" + at).c_str(),
+          [](const char* name, uint32_t size, uint32_t mtime, bool folder, void* arg) {
+            Listing& l = *(Listing*)arg;
+            std::string p = l.at->empty() ? name : *l.at + "/" + name;
+            if (folder) {
+              if (name[0] != '.' && l.depth <= FOLDER_DEPTH && l.folders->size() < FOLDERS_MAX) {
+                l.folders->push_back(p);
+              }
+            } else if (isPkg(name)) {
+              l.out->list.push_back({(uint32_t)l.out->names.size(), size, mtime});
+              l.out->names.append(p.c_str(), p.size() + 1);
+            }
+          },
+          &l);
+      if (!ok) {
+        hal::log("sd: listing %s/%s failed after %u packages, try %d", dir.c_str(), at.c_str(), (unsigned)out.list.size(), tries);
+      }
     }
-    hal::log("sd: listing %s failed after %u packages, try %d", dir.c_str(), (unsigned)out.list.size(), tries);
+    whole &= ok;
   }
-  return false;
+  return whole;
 }
 
 static std::atomic<bool> hashing{false}, hashedNew{false};
@@ -658,7 +688,8 @@ int catalog::scanSdInto(FwList& hub, FwList& sd) {
   readCache(cache);
   int unknown = 0;
   for (const SdFile& p : pkgs.list) {
-    const char* name = pkgs.names.c_str() + p.name;
+    const char* name = pkgs.names.c_str() + p.name;  // (its path in /fm1)
+    std::string base = baseName(name);
     // what it is: by its sha256 (a Hub firmware, or one of M-VAVE's), not by its name. Until that's known (it's
     // read in the background: hashSd), a Hub firmware by its file name and size (the install checks the sha256)
     std::string sha, prod;
@@ -670,17 +701,24 @@ int catalog::scanSdInto(FwList& hub, FwList& sd) {
     it.line = FwItem::NO_LINE;
     it.size = p.size;
     it.flags = FwItem::ON_SD;
-    size_t h = 0;
-    for (; h < hub.size(); h++) {
-      const FwItem& x = hub.items[h];
-      if (sha.empty() ? x.size == it.size && !strcasecmp(hub.str(x.file), name) : !strcasecmp(hub.str(x.sha256), sha.c_str())) {
-        break;
+    // the Hub can have the same file more than once (M-VAVE's stock firmware, in another firmware's repo: issue #88):
+    // all of them are on the card, and it's named after M-VAVE's own, else the one with its file name, else the first
+    size_t h = hub.size();
+    int best = -1;
+    for (size_t k = 0; k < hub.size(); k++) {
+      FwItem& x = hub.items[k];
+      bool sameName = !strcasecmp(hub.str(x.file), base.c_str());
+      if (sha.empty() ? x.size == it.size && sameName : !strcasecmp(hub.str(x.sha256), sha.c_str())) {
+        x.flags |= FwItem::ON_SD;
+        int score = (x.flags & FwItem::STOCK ? 2 : 0) + (sameName ? 1 : 0);
+        if (score > best) {
+          best = score, h = k;
+        }
       }
     }
     int o = sha.empty() ? -1 : official(sha.c_str());
-    if (h < hub.size()) {
-      FwItem& x = hub.items[h];
-      x.flags |= FwItem::ON_SD;
+    if (h < hub.size() && !(o >= 0 && !(hub.items[h].flags & FwItem::STOCK))) {
+      const FwItem& x = hub.items[h];
       it.name = list.add(hub.str(x.name));
       it.author = list.add(hub.str(x.author));
       it.version = list.add(hub.str(x.version));
@@ -698,7 +736,7 @@ int catalog::scanSdInto(FwList& hub, FwList& sd) {
       it.kinds = list.kindBit(OFFICIAL[o].open ? "groove" : "stock");
       it.flags |= OFFICIAL[o].open ? 0 : FwItem::STOCK;
     } else {
-      it.name = list.add(name, strlen(name) - 5);
+      it.name = list.add(base.c_str(), base.size() - 5);
     }
     it.file = list.add(name);
     it.product = list.add(prod);
@@ -795,7 +833,12 @@ int catalog::hubVersionOf(const FwList& hub, const FwList& sd, size_t i) {
     return -1;  // (not a package)
   }
   std::string name = stem(sd.str(f.file));
-  int same = -1, only = -1, ids = 0;
+  for (size_t h = 0; f.flags & FwItem::FROM_HUB && h < hub.size(); h++) {
+    if (hub[h].line == f.line) {
+      return (int)h;  // the very file, as the list named it (scanSdInto)
+    }
+  }
+  int same = -1;
   for (size_t h = 0; h < hub.size(); h++) {
     const FwItem& x = hub[h];
     if (*sd.str(f.sha256) && !strcasecmp(hub.str(x.sha256), sd.str(f.sha256))) {
@@ -804,15 +847,12 @@ int catalog::hubVersionOf(const FwList& hub, const FwList& sd, size_t i) {
     if (strcasecmp(hub.str(x.product), prod)) {
       continue;
     }
-    ids++;
-    only = (int)h;
     // (two of the same name: a release and a beta, say: the newest)
     if (stem(hub.str(x.file)) == name && (same < 0 || strcmp(hub.str(x.date), hub.str(hub[same].date)) > 0)) {
       same = (int)h;
     }
   }
-  return same >= 0 ? same : ids == 1 ? only
-                                     : -1;
+  return same;  // (not "the only one for that device": a device ID is shared by other firmwares, issue #88)
 }
 
 void catalog::scanSd() {

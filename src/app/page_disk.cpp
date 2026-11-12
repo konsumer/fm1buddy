@@ -59,7 +59,7 @@ void ui::diskPage(lv_obj_t* page) {
   lv_obj_t* body = scroller(page);
   lv_obj_set_style_pad_row(body, 6, 0);
   wrapped(body,
-          "The SD card is a USB drive on the computer: copy firmwares to fm1, .syx files to syx, setups to setups. "
+          "The SD card is a USB drive on the computer: copy firmwares to fm1, .syx files to syx (in folders of their own too), setups to setups. "
           "Nothing here touches the card meanwhile.",
           &lv_font_montserrat_14, t.text);
   shownState = hal::diskState();

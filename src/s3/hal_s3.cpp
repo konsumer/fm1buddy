@@ -663,7 +663,7 @@ bool hal::sha256(const uint8_t* p, size_t n, char hex[65]) {
 
 // through FatFs: its directory entries have the size and time, where stat would search the folder for each file (the
 // card is its only volume: drive 0)
-bool hal::listDir(const char* path, void (*fn)(const char* name, uint32_t size, uint32_t mtime, void* arg), void* arg) {
+bool hal::listDir(const char* path, void (*fn)(const char* name, uint32_t size, uint32_t mtime, bool folder, void* arg), void* arg) {
   if (strncmp(path, "/sdcard/", 8)) {
     return false;
   }
@@ -677,6 +677,7 @@ bool hal::listDir(const char* path, void (*fn)(const char* name, uint32_t size, 
   FILINFO fi;
   while ((r = f_readdir(&d, &fi)) == FR_OK && fi.fname[0]) {
     if (fi.fattrib & AM_DIR) {
+      fn(fi.fname, 0, 0, true, arg);
       continue;
     }
     struct tm tm = {};  // (as ESP-IDF's stat makes st_mtime)
@@ -687,7 +688,7 @@ bool hal::listDir(const char* path, void (*fn)(const char* name, uint32_t size, 
     tm.tm_min = (fi.ftime >> 5) & 0x3F;
     tm.tm_hour = fi.ftime >> 11;
     tm.tm_isdst = -1;
-    fn(fi.fname, fi.fsize, (uint32_t)mktime(&tm), arg);
+    fn(fi.fname, fi.fsize, (uint32_t)mktime(&tm), false, arg);
   }
   f_closedir(&d);
   if (r != FR_OK) {

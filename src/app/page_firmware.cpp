@@ -34,6 +34,16 @@ enum Machine { FM1,
 static const char* MACHINE_NAMES[MACHINES] = {"FM-1", "SMK Pro", "SMK Elite", "MKE-P37"};
 static int hubMachine = -1, sdMachine = -1;
 static Firmware sel;  // the one the details show
+// the SD card's folder shown ("": /fm1, else "drums/" or "drums/909/"), and the folders in it (with how many firmwares
+// they have, in them and theirs, for the machine picked). A row is an item of the list, the way up, or a folder
+static std::string sdFolder;
+struct Folder {
+  std::string name;
+  uint32_t count;
+};
+static std::vector<Folder> folders;
+#define ROW_UP 0xFFFFFFFFu
+#define ROW_FOLDER 0x80000000u
 static lv_obj_t *list, *status, *refresh, *spin;
 static lv_obj_t *actions, *progress, *progressText;
 static std::string shownFm1;  // the FM-1 the Install button was made for
@@ -116,10 +126,12 @@ static bool forDevice(const FwItem& f) {
   return machineOf(catalog::hub.str(f.product)) == hubShows();
 }
 
-// the list's items to show, in order
+// the list's rows, in order: on the SD card, the way up and the folders first
 static std::vector<uint32_t> shown() {
   const FwList& l = srcList();
   std::vector<uint32_t> v;
+  folders.clear();
+  bool there = sdFolder.empty();  // (the folder is still on the card)
   uint32_t kind = 0;
   for (size_t k = 0; k < l.kinds.size(); k++) {
     if (l.kinds[k] == kindFilter) {
@@ -129,7 +141,22 @@ static std::vector<uint32_t> shown() {
   int machine = source == HUB ? hubShows() : sdMachine;
   for (size_t i = 0; i < l.size(); i++) {
     const FwItem& f = l[i];
+    const char* file = l.str(f.file);
+    if (source == SD && strncmp(file, sdFolder.c_str(), sdFolder.size())) {
+      continue;  // (not in the folder shown)
+    }
+    there = true;
     if (machine >= 0 && machineOf(l.str(f.product)) != machine) {
+      continue;
+    }
+    if (const char* slash = source == SD ? strchr(file + sdFolder.size(), '/') : 0) {  // in a folder in it
+      std::string n(file + sdFolder.size(), slash);
+      auto k = std::find_if(folders.begin(), folders.end(), [&](const Folder& x) { return x.name == n; });
+      if (k == folders.end()) {
+        folders.push_back({n, 1});
+      } else {
+        k->count++;
+      }
       continue;
     }
     if (source == SD || kindFilter.empty() || f.kinds & kind) {
@@ -146,6 +173,22 @@ static std::vector<uint32_t> shown() {
         return d > 0;
       return strcasecmp(l.str(a.name), l.str(b.name)) < 0;
     });
+  }
+  if (source == SD && !there) {  // (it went: /fm1)
+    sdFolder.clear();
+    return shown();
+  }
+  if (source == SD) {
+    std::sort(folders.begin(), folders.end(), [](const Folder& a, const Folder& b) { return strcasecmp(a.name.c_str(), b.name.c_str()) < 0; });
+    std::vector<uint32_t> r;
+    if (!sdFolder.empty()) {
+      r.push_back(ROW_UP);
+    }
+    for (size_t i = 0; i < folders.size(); i++) {
+      r.push_back(ROW_FOLDER | (uint32_t)i);
+    }
+    r.insert(r.end(), v.begin(), v.end());
+    v.swap(r);
   }
   return v;
 }
@@ -170,7 +213,22 @@ static uint32_t listChanges;  // FwList::changes when the list was made
 
 static void open(lv_event_t* e) {
   const Slot& s = slots[(intptr_t)lv_event_get_user_data(e)];
-  if (s.at < 0 || (size_t)s.at >= rows.size() || rows[s.at] >= srcList().size()) {
+  if (s.at < 0 || (size_t)s.at >= rows.size()) {
+    return;
+  }
+  uint32_t r = rows[s.at];
+  if (source == SD && (r == ROW_UP || r & ROW_FOLDER)) {  // up a folder, or into one: its list, from the top
+    if (r == ROW_UP) {
+      size_t k = sdFolder.rfind('/', sdFolder.size() - 2);
+      sdFolder.resize(k == std::string::npos ? 0 : k + 1);
+    } else {
+      sdFolder += folders[r & ~ROW_FOLDER].name + "/";
+    }
+    fresh = true;
+    go(firmwarePage);
+    return;
+  }
+  if (r >= srcList().size()) {
     return;
   }
   sel = catalog::details(srcList(), rows[s.at]);
@@ -213,7 +271,28 @@ static void setLabel(lv_obj_t* l, const char* text, uint32_t c) {
 static void fillSlot(Slot& s, int at) {
   const Theme& t = theme();
   const FwList& l = srcList();
-  const FwItem& f = l[rows[at]];
+  uint32_t r = rows[at];
+  if (source == SD && (r == ROW_UP || r & ROW_FOLDER)) {
+    std::string name, sub;
+    if (r == ROW_UP) {
+      name = LV_SYMBOL_UP "  Back";
+      sub = "In " FW_DIR "/" + sdFolder.substr(0, sdFolder.size() - 1);
+    } else {
+      const Folder& f = folders[r & ~ROW_FOLDER];
+      name = LV_SYMBOL_DIRECTORY "  " + f.name;
+      sub = std::to_string(f.count) + (f.count == 1 ? " firmware" : " firmwares");
+    }
+    lv_label_set_text(s.name, name.c_str());
+    lv_label_set_text(s.sub, sub.c_str());
+    setLabel(s.kind, r == ROW_UP ? "" : LV_SYMBOL_RIGHT, t.dim);
+    setLabel(s.tag, "", t.dim);
+    setLabel(s.machine, "", t.dim);
+    lv_obj_set_pos(s.row, 0, at * ROW_H);
+    lv_obj_remove_flag(s.row, LV_OBJ_FLAG_HIDDEN);
+    s.at = at;
+    return;
+  }
+  const FwItem& f = l[r];
   lv_label_set_text(s.name, l.str(f.name));
   std::string sub = l.str(f.author);
   if (*l.str(f.version)) {
@@ -288,7 +367,7 @@ static void fillList() {
     if (source == SD && hal::sd() && !catalog::sd.empty()) {
       lv_label_set_text(l, "None for that machine on the SD card.");
     } else if (source == SD) {
-      lv_label_set_text(l, hal::sd() ? "No firmwares in /fm1 on the SD card. Save some from the Hub, or copy .fwsc files there."
+      lv_label_set_text(l, hal::sd() ? "No firmwares in /fm1 on the SD card. Save some from the Hub, or copy .fwsc files there (in folders too)."
                                      : "No SD card.");
     } else if (!settings.ssid[0]) {
       lv_label_set_text(l, "Pick a Wi-Fi network in Settings to get the Firmware Hub's list.");
@@ -607,7 +686,7 @@ static void downloaded() {
     return;
   }
   if (k == jobs::FW_UPDATE) {
-    int i = jobs::ok ? sdIndex(updTo.file) : -1;
+    int i = jobs::ok ? sdIndex(jobs::saved) : -1;
     if (i >= 0) {
       sel = catalog::details(catalog::sd, i);
       updFor = sel.file;
@@ -627,7 +706,11 @@ static void downloaded() {
     return;
   }
   if (jobs::ok) {
-    toast(jobs::kind == jobs::INSTALL ? "Installed." : "Saved to the SD card.");
+    bool renamed = jobs::saved != sel.file;
+    toast(jobs::kind == jobs::INSTALL ? "Installed."
+          : renamed                   ? ("Saved to the SD card as " + jobs::saved + ".").c_str()
+                                      : "Saved to the SD card.");
+    sel.file = jobs::saved;
     sel.onSd = true;
   } else {
     toast(devText(jobs::error).c_str(), true);
@@ -643,6 +726,10 @@ static void save(lv_event_t*) {
 }
 
 static void update(lv_event_t*) {
+  size_t k = sel.file.rfind('/');
+  if (upd == UPD_NEWER && k != std::string::npos && updTo.file.find('/') == std::string::npos) {
+    updTo.file = sel.file.substr(0, k + 1) + updTo.file;  // (in the old one's folder)
+  }
   bool started = upd == UPD_NEWER ? jobs::updateFirmware(updTo, sel.file) : jobs::hubList();
   if (!started) {
     toast("Busy: try again in a moment.", true);

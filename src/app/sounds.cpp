@@ -117,25 +117,29 @@ sounds::Info sounds::describe(const std::vector<uint8_t>& data) {
 }
 
 // --------------------------------------------------------------------------------------------- files ---
-std::vector<sounds::File> sounds::list() {
+std::vector<sounds::File> sounds::list(const std::string& folder) {
   std::vector<File> out;
   std::string dir = catalog::path(SYX_DIR);
+  dir += dir.empty() || folder.empty() ? "" : "/" + folder;
   DIR* d = dir.empty() ? 0 : opendir(dir.c_str());
   if (!d) {
     return out;
   }
   while (dirent* e = readdir(d)) {
     size_t n = strlen(e->d_name);
-    if (e->d_name[0] == '.' || n < 5 || strcasecmp(e->d_name + n - 4, ".syx")) {
+    struct stat st;
+    if (e->d_name[0] == '.' || stat((dir + "/" + e->d_name).c_str(), &st)) {
       continue;
     }
-    struct stat st;
-    if (!stat((dir + "/" + e->d_name).c_str(), &st)) {
-      out.push_back({e->d_name, (uint32_t)st.st_size});
+    bool folder = S_ISDIR(st.st_mode);
+    if (folder || (n >= 5 && !strcasecmp(e->d_name + n - 4, ".syx"))) {
+      out.push_back({e->d_name, (uint32_t)st.st_size, folder});
     }
   }
   closedir(d);
-  std::sort(out.begin(), out.end(), [](const File& a, const File& b) { return strcasecmp(a.name.c_str(), b.name.c_str()) < 0; });
+  std::sort(out.begin(), out.end(), [](const File& a, const File& b) {
+    return a.folder != b.folder ? a.folder : strcasecmp(a.name.c_str(), b.name.c_str()) < 0;
+  });
   return out;
 }
 

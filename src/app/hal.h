@@ -76,9 +76,9 @@ const char* selfUpdate(const char* path, void (*progress)(uint32_t done, uint32_
 // start again (after selfUpdate: the new firmware)
 void reboot();
 bool sha256(const uint8_t* p, size_t n, char hex[65]);
-// the files in a folder with their size and time (st_size, st_mtime as stat has them), from one read of the folder
-// (not a search of it a file): fn for each. false if it didn't read to its end
-bool listDir(const char* path, void (*fn)(const char* name, uint32_t size, uint32_t mtime, void* arg), void* arg);
+// the files in a folder with their size and time (st_size, st_mtime as stat has them), and its folders (folder: true,
+// no size), from one read of the folder (not a search of it a file): fn for each. false if it didn't read to its end
+bool listDir(const char* path, void (*fn)(const char* name, uint32_t size, uint32_t mtime, bool folder, void* arg), void* arg);
 
 // USB: the port is the host (a hub on it, the FM-1 and controllers on the hub), or, when a computer is on it at
 // power-on, a serial port to the computer (for flashing and logs)

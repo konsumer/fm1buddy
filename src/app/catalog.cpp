@@ -506,7 +506,7 @@ Firmware catalog::details(const FwList& l, size_t i) {
   f.hub = it.flags & FwItem::FROM_HUB;
   if (&l == &hub && f.onSd) {  // the copy on the SD card: where it is in /fm1 (a folder, say)
     for (const FwItem& x : sd.items) {
-      if (x.flags & FwItem::FROM_HUB && x.line == it.line) {
+      if ((x.flags & FwItem::FROM_HUB && x.line == it.line) || (*l.str(it.sha256) && !strcasecmp(sd.str(x.sha256), l.str(it.sha256)))) {
         f.file = sd.str(x.file);
         break;
       }
@@ -701,17 +701,24 @@ int catalog::scanSdInto(FwList& hub, FwList& sd) {
     it.line = FwItem::NO_LINE;
     it.size = p.size;
     it.flags = FwItem::ON_SD;
-    size_t h = 0;
-    for (; h < hub.size(); h++) {
-      const FwItem& x = hub.items[h];
-      if (sha.empty() ? x.size == it.size && !strcasecmp(hub.str(x.file), base.c_str()) : !strcasecmp(hub.str(x.sha256), sha.c_str())) {
-        break;
+    // the Hub can have the same file more than once (M-VAVE's stock firmware, in another firmware's repo: issue #88):
+    // all of them are on the card, and it's named after M-VAVE's own, else the one with its file name, else the first
+    size_t h = hub.size();
+    int best = -1;
+    for (size_t k = 0; k < hub.size(); k++) {
+      FwItem& x = hub.items[k];
+      bool sameName = !strcasecmp(hub.str(x.file), base.c_str());
+      if (sha.empty() ? x.size == it.size && sameName : !strcasecmp(hub.str(x.sha256), sha.c_str())) {
+        x.flags |= FwItem::ON_SD;
+        int score = (x.flags & FwItem::STOCK ? 2 : 0) + (sameName ? 1 : 0);
+        if (score > best) {
+          best = score, h = k;
+        }
       }
     }
     int o = sha.empty() ? -1 : official(sha.c_str());
-    if (h < hub.size()) {
-      FwItem& x = hub.items[h];
-      x.flags |= FwItem::ON_SD;
+    if (h < hub.size() && !(o >= 0 && !(hub.items[h].flags & FwItem::STOCK))) {
+      const FwItem& x = hub.items[h];
       it.name = list.add(hub.str(x.name));
       it.author = list.add(hub.str(x.author));
       it.version = list.add(hub.str(x.version));
@@ -826,7 +833,12 @@ int catalog::hubVersionOf(const FwList& hub, const FwList& sd, size_t i) {
     return -1;  // (not a package)
   }
   std::string name = stem(sd.str(f.file));
-  int same = -1, only = -1, ids = 0;
+  for (size_t h = 0; f.flags & FwItem::FROM_HUB && h < hub.size(); h++) {
+    if (hub[h].line == f.line) {
+      return (int)h;  // the very file, as the list named it (scanSdInto)
+    }
+  }
+  int same = -1;
   for (size_t h = 0; h < hub.size(); h++) {
     const FwItem& x = hub[h];
     if (*sd.str(f.sha256) && !strcasecmp(hub.str(x.sha256), sd.str(f.sha256))) {
@@ -835,15 +847,12 @@ int catalog::hubVersionOf(const FwList& hub, const FwList& sd, size_t i) {
     if (strcasecmp(hub.str(x.product), prod)) {
       continue;
     }
-    ids++;
-    only = (int)h;
     // (two of the same name: a release and a beta, say: the newest)
     if (stem(hub.str(x.file)) == name && (same < 0 || strcmp(hub.str(x.date), hub.str(hub[same].date)) > 0)) {
       same = (int)h;
     }
   }
-  return same >= 0 ? same : ids == 1 ? only
-                                     : -1;
+  return same;  // (not "the only one for that device": a device ID is shared by other firmwares, issue #88)
 }
 
 void catalog::scanSd() {

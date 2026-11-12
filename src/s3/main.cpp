@@ -190,6 +190,11 @@ void hal::sleep() {
   hal::log("sleep: not on the 3.5\" board: its touch can't wake it");
   return;
 #endif
+#ifdef SCREEN_NV3041A
+  // the JC4827W543C's GT911 wakes it in theory (INT on GPIO3), but that's untried: awake until it is
+  hal::log("sleep: not on the JC4827W543C yet");
+  return;
+#endif
   hal::log("sleep: until the screen is touched");
   board::logNow();
   touchStop = true;  // (its I2C is touch::sleep's now: once it has let go of it)
@@ -284,6 +289,9 @@ static void console() {
       }
     } else if (!strcmp(line, "bat")) {
       // the battery's voltage (BAT_ADC, halved by the board): 40 readings over 2 s, in mV at the pin
+#ifndef BAT_ADC
+      Serial.println("NOBAT");
+#else
       int lo = 99999, hi = 0;
       long sum = 0;
       for (int i = 0; i < 40; i++) {
@@ -294,6 +302,7 @@ static void console() {
         delay(50);
       }
       Serial.printf("BAT pin %d..%d mV, avg %ld (battery about %ld mV)\n", lo, hi, sum / 40, sum / 20);
+#endif
     } else if (sscanf(line, "touch %d", &x) == 1) {
       touchLogUntil = millis() + x * 1000u;  // (the touch task logs them meanwhile: the app runs on)
       touchLo[0] = touchLo[1] = 9999, touchHi[0] = touchHi[1] = -1;

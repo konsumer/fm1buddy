@@ -220,9 +220,16 @@ void board::begin() {
   rgbLedWrite(LED_RGB, 0, 0, 0);
 #endif
 #ifdef SD_CLK  // (a board without an SD card: no SD_ pins)
+#ifdef SD_D1
   SD_MMC.setPins(SD_CLK, SD_CMD, SD_D0, SD_D1, SD_D2, SD_D3);
   sdOk = SD_MMC.begin("/sdcard", false);
-  if (!sdOk) {  // (some boards only wire D0: 1-bit)
+  if (!sdOk)  // (some boards only wire D0: 1-bit)
+#endif
+  {
+#ifdef SD_CS  // a card wired for SPI: its CS is the card's D3, held high it stays in SD mode (1-bit on SCK, MOSI, MISO)
+    pinMode(SD_CS, OUTPUT);
+    digitalWrite(SD_CS, 1);
+#endif
     SD_MMC.setPins(SD_CLK, SD_CMD, SD_D0);
     sdOk = SD_MMC.begin("/sdcard", true);
   }
@@ -460,7 +467,11 @@ void hal::save(const char* key, const void* p, size_t n) {
 }
 
 uint32_t hal::batteryMv() {
+#ifdef BAT_ADC
   return analogReadMilliVolts(BAT_ADC) * 2;  // (the battery, halved by the board's divider)
+#else
+  return 0;  // (no battery pin: the icon stays hidden)
+#endif
 }
 
 void hal::backlight(uint8_t percent) {

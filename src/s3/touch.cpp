@@ -99,6 +99,108 @@ bool touch::regSet(uint8_t, uint8_t) {
   return false;
 }
 
+#elif defined(SCREEN_NV3041A)
+
+// ------------------------------------------------------------------------------- the JC4827W543C's GT911 ---
+// The GT911: 16-bit registers, big-endian. Its status (0x814E: bit 7 a new report, the low 4 bits how many fingers),
+// then 8 bytes a finger from 0x814F (track id, X, Y, size: little-endian), and the status cleared for the next one.
+// It reports about every 10 ms: between two, the fingers are as they were. Its address is picked by INT's level as it
+// leaves reset (low: 0x5D), but the other is tried too.
+#define REG_STATUS 0x814E
+#define REG_POINTS 0x814F
+#define MAX_POINTS 5
+
+static uint8_t addr = 0x5D;
+static touch::Point last[2];
+static int nLast;
+
+static bool reg(uint16_t r, uint8_t* d, size_t n) {
+  Wire.beginTransmission(addr);
+  Wire.write(r >> 8);
+  Wire.write(r & 0xFF);
+  if (Wire.endTransmission(false) != 0 || Wire.requestFrom(addr, (uint8_t)n) != n) {
+    return false;
+  }
+  for (size_t i = 0; i < n; i++) {
+    d[i] = Wire.read();
+  }
+  return true;
+}
+
+static bool regPut(uint16_t r, uint8_t v) {
+  Wire.beginTransmission(addr);
+  Wire.write(r >> 8);
+  Wire.write(r & 0xFF);
+  Wire.write(v);
+  return !Wire.endTransmission();
+}
+
+void touch::begin() {
+  gpio_hold_dis((gpio_num_t)TOUCH_RST);  // (in case a sleep held them)
+  gpio_hold_dis((gpio_num_t)TFT_BL);
+  pinMode(TOUCH_INT, OUTPUT);  // INT low out of reset: address 0x5D
+  digitalWrite(TOUCH_INT, 0);
+  pinMode(TOUCH_RST, OUTPUT);
+  digitalWrite(TOUCH_RST, 0);
+  delay(10);
+  digitalWrite(TOUCH_RST, 1);
+  delay(10);
+  pinMode(TOUCH_INT, INPUT);
+  readyAt = millis() + 100;
+  Wire.begin(TOUCH_SDA, TOUCH_SCL, 400000);
+}
+
+int touch::read(Point* out, int max) {
+  if ((int32_t)(millis() - readyAt) < 0) {
+    return 0;  // (the panel is still waking)
+  }
+  uint8_t st;
+  if (!reg(REG_STATUS, &st, 1)) {
+    static bool other;  // (no answer: the other address, once)
+    if (!other) {
+      other = true;
+      addr = addr == 0x5D ? 0x14 : 0x5D;
+      hal::log("touch: GT911 at 0x%02X", addr);
+    }
+    return 0;
+  }
+  if (st & 0x80) {  // a new report
+    const int n = st & 0x0F;
+    uint8_t r[8 * MAX_POINTS];
+    nLast = 0;
+    if (n && n <= MAX_POINTS && reg(REG_POINTS, r, (size_t)n * 8)) {
+      for (int i = 0; i < n && nLast < 2; i++) {
+        const uint8_t* p = r + i * 8;
+        Point& f = last[nLast++];
+        f.id = p[0];
+        f.x = (int16_t)(p[1] | p[2] << 8);
+        f.y = (int16_t)(p[3] | p[4] << 8);
+        const int size = p[5] | p[6] << 8;
+        f.weight = (uint8_t)(size > 255 ? 255 : size);
+        f.area = 2;
+      }
+    }
+    regPut(REG_STATUS, 0);
+  }
+  const int got = nLast < max ? nLast : max;
+  for (int i = 0; i < got; i++) {
+    out[i] = last[i];
+  }
+  return got;
+}
+
+void touch::sleep() {
+  // (hal::sleep doesn't sleep on this board yet)
+}
+
+bool touch::regGet(uint8_t, uint8_t&) {
+  return false;
+}
+
+bool touch::regSet(uint8_t, uint8_t) {
+  return false;
+}
+
 #else
 
 // -------------------------------------------------------------------------------------- the 2.8" and 4" ---

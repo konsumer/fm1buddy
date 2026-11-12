@@ -1,5 +1,5 @@
 # Builds the CYD-S3's firmware (the 2.8", the 3.5" and the 4"). Every run keeps it as a "firmware" artifact; tags
-# (v0.2) also get a release with it attached. (The case's STLs are made on the installer page, from
+# (v0.2) also get a release with it attached. The JC4827W543C's (DIY) is released too, but not on the installer page. (The case's STLs are made on the installer page, from
 # case/fm1buddy-case.scad.)
 name: build
 on:
@@ -41,7 +41,7 @@ jobs:
           key: platformio-${{ hashFiles('platformio.ini') }}
           restore-keys: platformio-
       # Settings > About shows it: the tag on a release, else the commit
-      - run: pio run -e cyd-s3 -e cyd-s3-35 -e cyd-s3-4
+      - run: pio run -e cyd-s3 -e cyd-s3-35 -e cyd-s3-4 -e jc4827w543c
         env:
           PLATFORMIO_BUILD_FLAGS: -DFM1BUDDY_VERSION=\"${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || github.sha }}\"
       - run: |
@@ -49,6 +49,7 @@ jobs:
           cp .pio/build/cyd-s3/firmware.factory.bin build/fm1buddy-cyd-s3.bin
           cp .pio/build/cyd-s3-35/firmware.factory.bin build/fm1buddy-cyd-s3-35.bin
           cp .pio/build/cyd-s3-4/firmware.factory.bin build/fm1buddy-cyd-s3-4.bin
+          cp .pio/build/jc4827w543c/firmware.factory.bin build/fm1buddy-jc4827w543c.bin
       - uses: actions/upload-artifact@v4
         with:
           name: firmware
@@ -56,6 +57,7 @@ jobs:
             build/fm1buddy-cyd-s3.bin
             build/fm1buddy-cyd-s3-35.bin
             build/fm1buddy-cyd-s3-4.bin
+            build/fm1buddy-jc4827w543c.bin
           if-no-files-found: error
       - uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/v')
@@ -64,4 +66,5 @@ jobs:
             build/fm1buddy-cyd-s3.bin
             build/fm1buddy-cyd-s3-35.bin
             build/fm1buddy-cyd-s3-4.bin
+            build/fm1buddy-jc4827w543c.bin
           fail_on_unmatched_files: true

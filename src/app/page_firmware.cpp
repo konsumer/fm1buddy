@@ -24,6 +24,7 @@ static Source source = SD;
 static bool sourceChosen, hubAsked;
 static int sortBy = NEWEST;
 static std::string kindFilter;  // "": all
+static std::string searchWord;  // only rows saying this are shown: "": all
 // the machines a firmware can be for (an SMK-37 package says which model), and which the lists show: the Hub's, the
 // one on the hub until another is picked (-1); the SD card's, all (-1) until one is picked
 enum Machine { FM1,
@@ -46,6 +47,7 @@ static std::vector<Folder> folders;
 #define ROW_FOLDER 0x80000000u
 static lv_obj_t *list, *status, *refresh, *spin;
 static lv_obj_t *actions, *progress, *progressText;
+static lv_obj_t* searchTa;  // the typing box of the search page (only there while it shows)
 static std::string shownFm1;  // the FM-1 the Install button was made for
 static std::string listFm1;   // ... and the one the list was made for
 // where each list (the SD card's, the Hub's) was scrolled to, to come back to it; fresh: a new list (another
@@ -148,6 +150,9 @@ static std::vector<uint32_t> shown() {
     there = true;
     if (machine >= 0 && machineOf(l.str(f.product)) != machine) {
       continue;
+    }
+    if (!searchWord.empty() && !catalog::match(l, f, searchWord)) {
+      continue;  // (the row doesn't say the typed word: not even a folder counts it)
     }
     if (const char* slash = source == SD ? strchr(file + sdFolder.size(), '/') : 0) {  // in a folder in it
       std::string n(file + sdFolder.size(), slash);
@@ -365,7 +370,8 @@ static void fillList() {
     lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_pad_all(l, 12, 0);
     if (source == SD && hal::sd() && !catalog::sd.empty()) {
-      lv_label_set_text(l, "None for that machine on the SD card.");
+      lv_label_set_text(l, searchWord.empty() ? "None for that machine on the SD card."
+                                              : ("None in /fm1 says \"" + searchWord + "\"").c_str());
     } else if (source == SD) {
       lv_label_set_text(l, hal::sd() ? "No firmwares in /fm1 on the SD card. Save some from the Hub, or copy .fwsc files there (in folders too)."
                                      : "No SD card.");
@@ -374,9 +380,11 @@ static void fillList() {
       lv_obj_t* b = button(list, LV_SYMBOL_WIFI "  Wi-Fi settings", wifiSettings);
       lv_obj_set_pos(b, 12, 60);
     } else if (!jobs::running) {
-      lv_label_set_text(l, !kindFilter.empty()    ? "None of that kind."
-                           : catalog::hub.empty() ? "Nothing yet: tap " LV_SYMBOL_REFRESH " to get the list."
-                                                  : "None for that machine yet.");
+      std::string m = !searchWord.empty()    ? "Nothing in the Hub's list says \"" + searchWord + "\"."
+                        : !kindFilter.empty() ? "None of that kind."
+                        : catalog::hub.empty() ? "Nothing yet: tap " LV_SYMBOL_REFRESH " to get the list."
+                                               : "None for that machine yet.";
+      lv_label_set_text(l, m.c_str());
     }
     return;
   }
@@ -447,6 +455,12 @@ static void showStatus() {
     s = hal::sd() ? std::to_string(catalog::sd.size()) + " in /fm1 on the SD card" : "No SD card";
   } else if (!catalog::hubUpdated.empty()) {
     s = "List from " + catalog::hubUpdated;
+  }
+  if (!searchWord.empty()) {
+    if (!s.empty()) {
+      s += "  ";
+    }
+    s += "search \"" + searchWord + "\": only rows saying it";
   }
   lv_label_set_text(status, s.c_str());
   lv_obj_set_style_text_color(status, color(t.dim), 0);
@@ -530,6 +544,43 @@ void ui::firmwareSource(bool hub) {
   sourceChosen = true;  // (the SD card's even with none on it: no Wi-Fi then)
 }
 
+// ----------------------------------------------------------------------------------------------- search ---
+// typing a few letters: the lists show only rows that say them (catalog::match: names, authors, kinds, files).
+// The word stays for as long as the page's open (for both lists): tapping Search again changes it, and typing
+// nothing stops the search. The keyboard takes the whole screen, so this is its own page, like the Wi-Fi one
+static void searched(lv_event_t* e) {
+  if (lv_event_get_code(e) == LV_EVENT_READY) {
+    searchWord = lv_textarea_get_text(searchTa);
+    fresh = true;  // (a new list: from the top)
+  }
+  go(firmwarePage);
+}
+
+static void searchPage(lv_obj_t* page) {
+  const Theme& t = theme();
+  fullscreen(true);
+  std::string title = searchWord.empty() ? "Search" : "Search: \"" + searchWord + "\"";
+  header(page, title.c_str(), firmwarePage);
+  lv_obj_t* r = box(page, LV_FLEX_FLOW_ROW);
+  searchTa = lv_textarea_create(r);
+  lv_textarea_set_one_line(searchTa, true);
+  lv_textarea_set_placeholder_text(searchTa, "a name, an author, a kind, a file");
+  lv_obj_set_flex_grow(searchTa, 1);
+  lv_obj_add_state(searchTa, LV_STATE_FOCUSED);
+  label(page, "The lists show only what says these letters.", &lv_font_montserrat_12, t.dim);
+  lv_obj_t* kb = lv_keyboard_create(page);
+  lv_obj_set_size(kb, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_flex_grow(kb, 1);
+  lv_keyboard_set_textarea(kb, searchTa);
+  lv_obj_add_event_cb(kb, searched, LV_EVENT_READY, 0);
+  lv_obj_add_event_cb(kb, searched, LV_EVENT_CANCEL, 0);
+}
+
+static void searchButton(lv_obj_t* row) {
+  lv_obj_t* b = button(row, "Search", [](lv_event_t*) { go(searchPage); });
+  lv_obj_set_size(b, 64, 30);
+}
+
 void ui::firmwarePage(lv_obj_t* page) {
   const Theme& t = theme();
   if (!sourceChosen && catalog::sd.empty()) {
@@ -593,10 +644,12 @@ void ui::firmwarePage(lv_obj_t* page) {
       menuStyle(dd);
       lv_obj_add_event_cb(dd, i ? pickSort : pickKind, LV_EVENT_VALUE_CHANGED, 0);
     }
+    searchButton(opts);  // (search is next to the other filters: both lists take the word)
   }
   if (source == SD && !catalog::sd.empty()) {
     lv_obj_t* opts = box(page, LV_FLEX_FLOW_ROW);
     machineMenu(opts);
+    searchButton(opts);
   }
   list = scroller(page);
   lv_obj_set_layout(list, LV_LAYOUT_NONE);  // (the rows are where they're scrolled to: place)

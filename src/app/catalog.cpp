@@ -16,6 +16,7 @@
 
 #include "fm1.h"
 #include "hal.h"
+#include "textmatch.h"
 
 FwList catalog::hub, catalog::sd;
 std::string catalog::hubUpdated;
@@ -44,57 +45,12 @@ static std::string baseName(const std::string& p) {
   return s == std::string::npos ? p : p.substr(s + 1);
 }
 
-// the screen's fonts are ASCII: accented letters lose their accents, curly quotes and dashes straighten
-static std::string ascii(const char* s) {
-  static const char* LATIN =  // U+00C0 to U+017F
-      "AAAAAAACEEEEIIIIDNOOOOOxOUUUUYTsaaaaaaaceeeeiiiidnooooo/ouuuuyty"
-      "AaAaAaCcCcCcCcDdDdEeEeEeEeEeGgGgGgGgHhHhIiIiIiIiIiJjJjKkkLlLlLlLlLlNnNnNnnNnOoOoOoOoRrRrRrSsSsSsSsTtTtTtUuUuUuUuUuUuWwYyYZzZzZzs";
-  std::string o;
-  const uint8_t* p = (const uint8_t*)s;
-  while (*p) {
-    uint32_t c = *p;
-    int n = c < 0x80 ? 0 : c >= 0xF0 ? 3
-                       : c >= 0xE0   ? 2
-                       : c >= 0xC0   ? 1
-                                     : 0;
-    c &= n == 3 ? 0x07 : n == 2 ? 0x0F
-                     : n == 1   ? 0x1F
-                                : 0xFF;
-    p++;
-    for (int i = 0; i < n && (*p & 0xC0) == 0x80; i++) {
-      c = c << 6 | (*p++ & 0x3F);
-    }
-    if (c < 0x80) {
-      o += (char)c;
-    } else if (c >= 0xC0 && c <= 0x17F) {
-      o += LATIN[c - 0xC0];
-      if (c == 0xDF)
-        o += 's';  // ss
-    } else if (c == 0x2018 || c == 0x2019) {
-      o += '\'';
-    } else if (c == 0x201C || c == 0x201D) {
-      o += '"';
-    } else if (c == 0x2013 || c == 0x2014) {
-      o += '-';
-    } else if (c == 0x2026) {
-      o += "...";
-    } else if (c == 0xA0) {
-      o += ' ';
-    } else if (c >= 0x1F000 || (c >= 0x2600 && c <= 0x27BF) || c == 0xFE0F) {
-      // emoji: left out
-    } else {
-      o += '?';
-    }
-  }
-  return o;
-}
-
 static void readEntry(JsonObjectConst e, Firmware& f) {
-  f.name = ascii(e["name"] | "?");
-  f.author = ascii(e["author"] | "");
+  f.name = textmatch::ascii(e["name"] | "?");
+  f.author = textmatch::ascii(e["author"] | "");
   f.version = e["version"] | "";
   f.date = e["date"] | "";
-  f.what = ascii(e["what"] | "");
+  f.what = textmatch::ascii(e["what"] | "");
   f.pkg = e["pkg"] | "";
   f.file = baseName(e["file"] | f.pkg.c_str());
   f.product = e["product"] | "";
@@ -539,6 +495,26 @@ Firmware catalog::details(const FwList& l, size_t i) {
                               : "The firmware the FM-1 came with: put it back to how it was.";
   }
   return f;
+}
+
+// does a row say the word a reader typed? What the row shows, plus its file: typing a few letters finds a
+// firmware by any of those. Fast enough for the UI thread: a handful of short compares
+bool catalog::match(const FwList& l, const FwItem& f, const std::string& word) {
+  if (word.empty()) {
+    return true;
+  }
+  uint32_t fields[] = {f.name, f.author, f.version, f.file, f.product};
+  for (uint32_t at : fields) {
+    if (textmatch::foldHas(l.str(at), word)) {
+      return true;
+    }
+  }
+  for (size_t k = 0; k < l.kinds.size(); k++) {
+    if (f.kinds & 1u << k && textmatch::foldHas(l.kinds[k].c_str(), word)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // ------------------------------------------------------------------------------------- the SD card ---

@@ -9,3 +9,5 @@ c++ -std=gnu++17 -Wall -I src/app -o build/sloopfmt_test test/sloopfmt_test.cpp 
 build/sloopfmt_test
 c++ -std=gnu++17 -Wall -I src/app -o build/mirror_test test/mirror_test.cpp src/app/mirror.cpp
 build/mirror_test
+c++ -std=gnu++17 -Wall -I src/app -o build/textmatch_test test/textmatch_test.cpp src/app/textmatch.cpp
+build/textmatch_test

@@ -541,9 +541,34 @@ static void pickSort(lv_event_t* e) {
 }
 #else
 // the 2.8" screen's second row is four controls in 260 px: the sort and the search become icons, and the machine
-// and kind menus take the space they used to need. the sort is a tap-to-swap button: ↓ newest first, "A-Z"
-// alphabetical — what it shows is the order you're in
-static const char* const SORT_MARKS[] = {LV_SYMBOL_DOWN, "A-Z"};
+// and kind menus take the space they used to need. the sort is a tap-to-swap button: a star means newest first
+// (no star in the app's fonts: it's drawn below, like the Search magnifier), "A-Z" alphabetical — what it shows
+// is the order you're in
+static const char* const SORT_MARKS[] = {"", "A-Z"};  // the star is drawn, "A-Z" says it
+static const int8_t STAR[][2] = {{0, -7}, {2, -2}, {7, -2}, {3, 1}, {4, 6}, {0, 3}, {-4, 6}, {-3, 1}, {-7, -2}, {-2, -2}};  // one point up
+static void sortStar(lv_event_t* e) {
+  if (sortBy != NEWEST) {
+    return;
+  }
+  lv_layer_t* layer = lv_event_get_layer(e);
+  if (!layer) {
+    return;
+  }
+  lv_area_t r;
+  lv_obj_get_coords((lv_obj_t*)lv_event_get_target(e), &r);
+  int cx = (r.x1 + r.x2) / 2, cy = (r.y1 + r.y2) / 2;
+  const Theme& t = theme();
+  lv_draw_triangle_dsc_t d;
+  lv_draw_triangle_dsc_init(&d);
+  d.bg_color = color(t.text);
+  d.bg_opa = LV_OPA_COVER;
+  for (int k = 0; k < 10; k++) {  // the star filled from its center, one triangle per edge
+    d.p[0].x = cx, d.p[0].y = cy;
+    d.p[1].x = cx + STAR[k][0], d.p[1].y = cy + STAR[k][1];
+    d.p[2].x = cx + STAR[(k + 1) % 10][0], d.p[2].y = cy + STAR[(k + 1) % 10][1];
+    lv_draw_triangle(layer, &d);
+  }
+}
 static void sortTapped(lv_event_t* e) {
   sortBy = sortBy == NEWEST ? NAME : NEWEST;
   lv_label_set_text(lv_obj_get_child((lv_obj_t*)lv_event_get_target(e), 0), SORT_MARKS[sortBy]);
@@ -562,10 +587,11 @@ static void sortControl(lv_obj_t* row) {
   menuStyle(dd);
   lv_obj_add_event_cb(dd, pickSort, LV_EVENT_VALUE_CHANGED, 0);
 #else
-  // the words don't fit on the 2.8": an icon button, the row's 12 px, sized like the search one
+  // the words don't fit on the 2.8": newness is drawn as a star, "A-Z" is short enough to say
   lv_obj_t* b = button(row, SORT_MARKS[sortBy], sortTapped);
   lv_obj_set_size(b, 44, 30);
   lv_obj_set_style_text_font(b, &lv_font_montserrat_12, 0);
+  lv_obj_add_event_cb(b, sortStar, LV_EVENT_DRAW_POST, 0);
 #endif
 }
 

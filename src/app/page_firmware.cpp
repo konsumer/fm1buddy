@@ -648,6 +648,7 @@ void ui::firmwarePage(lv_obj_t* page) {
   }
   if (source == SD && !catalog::sd.empty()) {
     lv_obj_t* opts = box(page, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(opts, 4, 0);  // (same as the Hub's: the menu and the Search button keep apart)
     machineMenu(opts);
     searchButton(opts);
   }

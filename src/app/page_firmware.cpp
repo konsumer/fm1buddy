@@ -533,10 +533,40 @@ static lv_obj_t* machineMenu(lv_obj_t* row) {
   return dd;
 }
 
+#if SCREEN_W >= 480
 static void pickSort(lv_event_t* e) {
   sortBy = lv_dropdown_get_selected((lv_obj_t*)lv_event_get_target(e));
   fillList();
   fromTop();
+}
+#else
+// the 2.8" screen's second row is four controls in 260 px: the sort and the search become icons, and the machine
+// and kind menus take the space they used to need. the sort is a tap-to-swap button: ↓ newest first, "A-Z"
+// alphabetical — what it shows is the order you're in
+static const char* const SORT_MARKS[] = {LV_SYMBOL_DOWN, "A-Z"};
+static void sortTapped(lv_event_t* e) {
+  sortBy = sortBy == NEWEST ? NAME : NEWEST;
+  lv_label_set_text(lv_obj_get_child((lv_obj_t*)lv_event_get_target(e), 0), SORT_MARKS[sortBy]);
+  fillList();
+  fromTop();
+}
+#endif
+
+static void sortControl(lv_obj_t* row) {
+#if SCREEN_W >= 480
+  lv_obj_t* dd = lv_dropdown_create(row);
+  lv_dropdown_set_options(dd, "Newest\nA-Z");
+  lv_dropdown_set_selected(dd, sortBy);
+  lv_obj_set_height(dd, 30);
+  lv_obj_set_flex_grow(dd, 1);
+  menuStyle(dd);
+  lv_obj_add_event_cb(dd, pickSort, LV_EVENT_VALUE_CHANGED, 0);
+#else
+  // the words don't fit on the 2.8": an icon button, the row's 12 px, sized like the search one
+  lv_obj_t* b = button(row, SORT_MARKS[sortBy], sortTapped);
+  lv_obj_set_size(b, 44, 30);
+  lv_obj_set_style_text_font(b, &lv_font_montserrat_12, 0);
+#endif
 }
 
 void ui::firmwareSource(bool hub) {
@@ -577,8 +607,15 @@ static void searchPage(lv_obj_t* page) {
 }
 
 static void searchButton(lv_obj_t* row) {
+#if SCREEN_W >= 480
   lv_obj_t* b = button(row, "Search", [](lv_event_t*) { go(searchPage); });
   lv_obj_set_size(b, 64, 30);
+#else
+  // the 2.8": a pencil and dots — "type a word and the list follows it" (no magnifier in the app's fonts)
+  lv_obj_t* b = button(row, LV_SYMBOL_EDIT "...", [](lv_event_t*) { go(searchPage); });
+  lv_obj_set_size(b, 44, 30);
+  lv_obj_set_style_text_font(b, &lv_font_montserrat_12, 0);
+#endif
 }
 
 void ui::firmwarePage(lv_obj_t* page) {
@@ -635,15 +672,14 @@ void ui::firmwarePage(lv_obj_t* page) {
     if (!at) {
       kindFilter.clear();
     }
-    for (int i = 0; i < 2; i++) {
-      lv_obj_t* dd = lv_dropdown_create(opts);
-      lv_dropdown_set_options(dd, i ? "Newest\nA-Z" : o.c_str());
-      lv_dropdown_set_selected(dd, i ? sortBy : at);
-      lv_obj_set_height(dd, 30);
-      lv_obj_set_flex_grow(dd, 1);
-      menuStyle(dd);
-      lv_obj_add_event_cb(dd, i ? pickSort : pickKind, LV_EVENT_VALUE_CHANGED, 0);
-    }
+    lv_obj_t* dd = lv_dropdown_create(opts);  // (the kinds: the order and the search go by their own buttons)
+    lv_dropdown_set_options(dd, o.c_str());
+    lv_dropdown_set_selected(dd, at);
+    lv_obj_set_height(dd, 30);
+    lv_obj_set_flex_grow(dd, 1);
+    menuStyle(dd);
+    lv_obj_add_event_cb(dd, pickKind, LV_EVENT_VALUE_CHANGED, 0);
+    sortControl(opts);
     searchButton(opts);  // (search is next to the other filters: both lists take the word)
   }
   if (source == SD && !catalog::sd.empty()) {

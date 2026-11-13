@@ -606,15 +606,46 @@ static void searchPage(lv_obj_t* page) {
   lv_obj_add_event_cb(kb, searched, LV_EVENT_CANCEL, 0);
 }
 
+#if SCREEN_W < 480
+// the 2.8" screen has no room for the word, and the app's fonts (LVGL's icon set) have no magnifier: so the
+// Search icon is drawn here — a glass and a handle, in the same ink the words are drawn with
+static void searchGlass(lv_event_t* e) {
+  lv_layer_t* layer = lv_event_get_layer(e);
+  lv_obj_t* b = (lv_obj_t*)lv_event_get_target(e);
+  if (!layer) {
+    return;
+  }
+  const Theme& t = theme();
+  lv_area_t r;
+  lv_obj_get_coords(b, &r);  // where it's drawn: the screen, not its row
+  int cx = (r.x1 + r.x2) / 2 - 2, cy = (r.y1 + r.y2) / 2 - 2;
+  lv_draw_arc_dsc_t a;
+  lv_draw_arc_dsc_init(&a);
+  a.color = color(t.text);
+  a.width = 2;  // the ring
+  a.center.x = cx, a.center.y = cy;
+  a.radius = 5;
+  a.start_angle = 0;
+  a.end_angle = 360;
+  lv_draw_arc(layer, &a);
+  lv_draw_line_dsc_t h;
+  lv_draw_line_dsc_init(&h);
+  h.color = color(t.text);
+  h.width = 2;
+  h.p1.x = cx + 4, h.p1.y = cy + 4;
+  h.p2.x = cx + 9, h.p2.y = cy + 9;
+  lv_draw_line(layer, &h);
+}
+#endif
+
 static void searchButton(lv_obj_t* row) {
 #if SCREEN_W >= 480
   lv_obj_t* b = button(row, "Search", [](lv_event_t*) { go(searchPage); });
   lv_obj_set_size(b, 64, 30);
 #else
-  // the 2.8": a pencil and dots — "type a word and the list follows it" (no magnifier in the app's fonts)
-  lv_obj_t* b = button(row, LV_SYMBOL_EDIT "...", [](lv_event_t*) { go(searchPage); });
+  lv_obj_t* b = button(row, "", [](lv_event_t*) { go(searchPage); });
   lv_obj_set_size(b, 44, 30);
-  lv_obj_set_style_text_font(b, &lv_font_montserrat_12, 0);
+  lv_obj_add_event_cb(b, searchGlass, LV_EVENT_DRAW_POST, 0);
 #endif
 }
 

@@ -22,8 +22,29 @@ static uint32_t readyAt;
 #define REPORT 7
 #define MAX_POINTS 10  // (which the panel has at most)
 
+// The panel has a new report only every so often (the touch-info register's coordinates bit), and it's read more often
+// than that (every 5 ms: main.cpp's touch task). Between two reports the fingers are as they were: they're kept, and
+// given again, or each reading in between is a finger lifted, and one touch is many taps. They're lifted when a report
+// has none, or when there has been no report for HOLD_MS (in case the panel says nothing of a finger that left)
+#define HOLD_MS 40
+
 static uint8_t maxTouches = 2;
 static bool asked;  // (the panel can still be starting when the app is: ask again until it answers)
+static touch::Point last[2];
+static int nLast;
+static uint32_t lastAt;  // when the report with them came
+
+// the fingers of the last report, while they stand
+static int held(touch::Point* out, int max) {
+  if (nLast && millis() - lastAt >= HOLD_MS) {
+    nLast = 0;
+  }
+  const int got = nLast < max ? nLast : max;
+  for (int i = 0; i < got; i++) {
+    out[i] = last[i];
+  }
+  return got;
+}
 
 static bool reg(uint16_t r, uint8_t* d, size_t n) {
   Wire.beginTransmission(ADDR);
@@ -64,27 +85,27 @@ int touch::read(Point* out, int max) {
   }
   uint8_t info;
   if (!reg(REG_TOUCH_INFO, &info, 1) || !(info & 0x08)) {
-    return 0;  // (no new coordinates: the fingers are as they were)
+    return held(out, max);  // (no new coordinates: the fingers are as they were)
   }
   uint8_t r[REPORT * MAX_POINTS];
-  const int n = max < maxTouches ? max : maxTouches;
   if (!reg(REG_POINTS, r, (size_t)maxTouches * REPORT)) {
-    return 0;
+    return held(out, max);
   }
-  int got = 0;
-  for (int i = 0; i < maxTouches && got < n; i++) {
+  nLast = 0;
+  for (int i = 0; i < maxTouches && nLast < 2; i++) {
     const uint8_t* p = r + i * REPORT;
     if (!(p[0] & 0x80)) {
       continue;  // (not a finger)
     }
-    Point& f = out[got++];
+    Point& f = last[nLast++];
     f.x = (int16_t)((p[0] & 0x3F) << 8 | p[1]);
     f.y = (int16_t)(p[2] << 8 | p[3]);
     f.id = (uint8_t)i;
     f.weight = 32;  // (the panel leaves these out)
     f.area = 2;
   }
-  return got;
+  lastAt = millis();
+  return held(out, max);
 }
 
 void touch::sleep() {

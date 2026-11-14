@@ -11,6 +11,8 @@ namespace display {
 lv_display_t* begin();
 // the panel off and asleep (hal::sleep, before the chip's)
 void sleep();
+// the picture a half turn round (hal::flip): what's drawn from now on. The touch readings are turned by main.cpp
+void flip(bool on);
 // the panel is portrait and LVGL turns it: its touch readings are portrait too
 bool rotated();
 // a touch reading (the panel's own pixels), as the screen shows it (landscape, SCREEN_W x SCREEN_H)

@@ -205,19 +205,28 @@ static void rounder(lv_event_t* e) {
     a->y2 = SCREEN_H - 1;
 }
 
+static bool flipped;  // (display::flip)
+
 static void flush(lv_display_t* d, const lv_area_t* a, uint8_t* px) {
   const int w = lv_area_get_width(a);
   const uint16_t* src = (const uint16_t*)px;
   lv_area_t n = *a;
   lv_display_rotate_area(d, &n);  // the panel's own pixels: portrait
+  if (flipped) {                  // a half turn: the same pixels, from the panel's other corner
+    const lv_area_t m = n;
+    n.x1 = NATIVE_W - 1 - m.x2, n.x2 = NATIVE_W - 1 - m.x1;  // (still on 4-column steps: rounder)
+    n.y1 = NATIVE_H - 1 - m.y2, n.y2 = NATIVE_H - 1 - m.y1;
+  }
   const int nw = lv_area_get_width(&n), rows = CHUNK / 2 / nw;
   for (int y = n.y1; y <= n.y2; y += rows) {
     const int last = y + rows - 1 < n.y2 ? y + rows - 1 : n.y2;
     uint16_t* dst = bounce;
     for (int yn = y; yn <= last; yn++) {
       for (int xn = n.x1; xn <= n.x2; xn++) {
-        // the panel's (xn, yn) is the screen's (yn, SCREEN_H - 1 - xn): a quarter turn (LV_DISPLAY_ROTATION_270)
-        const uint16_t c = src[(SCREEN_H - 1 - xn - a->y1) * w + (yn - a->x1)];
+        // the panel's (xn, yn) is the screen's (yn, SCREEN_H - 1 - xn): a quarter turn (LV_DISPLAY_ROTATION_270);
+        // flipped, it's the screen's (SCREEN_W - 1 - yn, xn)
+        const uint16_t c = flipped ? src[(xn - a->y1) * w + (SCREEN_W - 1 - yn - a->x1)]
+                                   : src[(SCREEN_H - 1 - xn - a->y1) * w + (yn - a->x1)];
         *dst++ = (uint16_t)(c >> 8 | c << 8);  // the panel takes each pixel's high byte first
       }
     }
@@ -238,6 +247,10 @@ lv_display_t* display::begin() {
   lv_display_set_flush_cb(disp, flush);
   lv_display_add_event_cb(disp, rounder, LV_EVENT_INVALIDATE_AREA, nullptr);
   return disp;
+}
+
+void display::flip(bool on) {
+  flipped = on;
 }
 
 bool display::rotated() {
@@ -367,6 +380,8 @@ static void panelInit() {
   delay(20);
 }
 
+static bool flipped;  // (display::flip)
+
 static void flush(lv_display_t* d, const lv_area_t* a, uint8_t* px) {
   const int w = lv_area_get_width(a), rows = CHUNK / 2 / w;
   const uint16_t* src = (const uint16_t*)px;
@@ -375,9 +390,15 @@ static void flush(lv_display_t* d, const lv_area_t* a, uint8_t* px) {
     const size_t n = (size_t)(last - y + 1) * w;
     const uint16_t* row = src + (size_t)(y - a->y1) * w;
     for (size_t i = 0; i < n; i++) {
-      bounce[i] = (uint16_t)(row[i] >> 8 | row[i] << 8);  // the panel takes each pixel's high byte first
+      // the panel takes each pixel's high byte first. Flipped (a half turn): the same pixels, last first, into the
+      // window at the panel's other corner
+      bounce[flipped ? n - 1 - i : i] = (uint16_t)(row[i] >> 8 | row[i] << 8);
     }
-    window(a->x1, y, a->x2, last);
+    if (flipped) {
+      window(SCREEN_W - 1 - a->x2, SCREEN_H - 1 - last, SCREEN_W - 1 - a->x1, SCREEN_H - 1 - y);
+    } else {
+      window(a->x1, y, a->x2, last);
+    }
     push(bounce, n * 2, 0x2C);  // (RAMWR: from the window's start)
   }
   lv_display_flush_ready(d);
@@ -392,6 +413,10 @@ lv_display_t* display::begin() {
   buffers(disp, SCREEN_W, SCREEN_H);
   lv_display_set_flush_cb(disp, flush);
   return disp;
+}
+
+void display::flip(bool on) {
+  flipped = on;
 }
 
 bool display::rotated() {
@@ -435,6 +460,10 @@ lv_display_t* display::begin() {
   lv_display_set_buffers(disp, a, b, n, LV_DISPLAY_RENDER_MODE_PARTIAL);
   lv_display_set_flush_cb(disp, flush);
   return disp;
+}
+
+void display::flip(bool on) {
+  tft.setRotation(on ? 3 : 1);  // (the quarter turn the other way: a half turn of the picture)
 }
 
 void display::sleep() {

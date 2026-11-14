@@ -28,6 +28,14 @@ static uint32_t tapUntil, dragAt;
 static hal::TouchCal cal;
 static bool calOn;
 
+// the picture a half turn round (hal::flip): the fingers too
+static bool flipOn;
+
+void hal::flip(bool on) {
+  flipOn = on;
+  display::flip(on);
+}
+
 void hal::touchCal(const TouchCal* c) {
   calOn = c;
   if (c) {
@@ -90,6 +98,10 @@ static int readPanel(hal::Finger* out) {
     if (calOn && cal.x1 != cal.x0 && cal.y1 != cal.y0) {
       x = stretch(x, cal.x0, cal.x1, W);
       y = stretch(y, cal.y0, cal.y1, H);
+    }
+    x = constrain(x, 0, W - 1), y = constrain(y, 0, H - 1);
+    if (flipOn) {  // (after the calibration: that's the panel's, whichever way up the picture is)
+      x = W - 1 - x, y = H - 1 - y;
     }
     hal::Finger& f = out[i];
     f.x = (int16_t)constrain(x, 0, W - 1);

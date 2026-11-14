@@ -24,6 +24,7 @@ static Source source = SD;
 static bool sourceChosen, hubAsked;
 static int sortBy = NEWEST;
 static std::string kindFilter;  // "": all
+static std::string searchWord;  // only rows saying this are shown: "": all
 // the machines a firmware can be for (an SMK-37 package says which model), and which the lists show: the Hub's, the
 // one on the hub until another is picked (-1); the SD card's, all (-1) until one is picked
 enum Machine { FM1,
@@ -46,6 +47,7 @@ static std::vector<Folder> folders;
 #define ROW_FOLDER 0x80000000u
 static lv_obj_t *list, *status, *refresh, *spin;
 static lv_obj_t *actions, *progress, *progressText;
+static lv_obj_t* searchTa;  // the typing box of the search page (only there while it shows)
 static std::string shownFm1;  // the FM-1 the Install button was made for
 static std::string listFm1;   // ... and the one the list was made for
 // where each list (the SD card's, the Hub's) was scrolled to, to come back to it; fresh: a new list (another
@@ -148,6 +150,9 @@ static std::vector<uint32_t> shown() {
     there = true;
     if (machine >= 0 && machineOf(l.str(f.product)) != machine) {
       continue;
+    }
+    if (!searchWord.empty() && !catalog::match(l, f, searchWord)) {
+      continue;  // (the row doesn't say the typed word: not even a folder counts it)
     }
     if (const char* slash = source == SD ? strchr(file + sdFolder.size(), '/') : 0) {  // in a folder in it
       std::string n(file + sdFolder.size(), slash);
@@ -365,7 +370,8 @@ static void fillList() {
     lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_pad_all(l, 12, 0);
     if (source == SD && hal::sd() && !catalog::sd.empty()) {
-      lv_label_set_text(l, "None for that machine on the SD card.");
+      lv_label_set_text(l, searchWord.empty() ? "None for that machine on the SD card."
+                                              : ("None in /fm1 says \"" + searchWord + "\"").c_str());
     } else if (source == SD) {
       lv_label_set_text(l, hal::sd() ? "No firmwares in /fm1 on the SD card. Save some from the Hub, or copy .fwsc files there (in folders too)."
                                      : "No SD card.");
@@ -374,9 +380,11 @@ static void fillList() {
       lv_obj_t* b = button(list, LV_SYMBOL_WIFI "  Wi-Fi settings", wifiSettings);
       lv_obj_set_pos(b, 12, 60);
     } else if (!jobs::running) {
-      lv_label_set_text(l, !kindFilter.empty()    ? "None of that kind."
-                           : catalog::hub.empty() ? "Nothing yet: tap " LV_SYMBOL_REFRESH " to get the list."
-                                                  : "None for that machine yet.");
+      std::string m = !searchWord.empty()    ? "Nothing in the Hub's list says \"" + searchWord + "\"."
+                        : !kindFilter.empty() ? "None of that kind."
+                        : catalog::hub.empty() ? "Nothing yet: tap " LV_SYMBOL_REFRESH " to get the list."
+                                               : "None for that machine yet.";
+      lv_label_set_text(l, m.c_str());
     }
     return;
   }
@@ -447,6 +455,12 @@ static void showStatus() {
     s = hal::sd() ? std::to_string(catalog::sd.size()) + " in /fm1 on the SD card" : "No SD card";
   } else if (!catalog::hubUpdated.empty()) {
     s = "List from " + catalog::hubUpdated;
+  }
+  if (!searchWord.empty()) {
+    if (!s.empty()) {
+      s += "  ";
+    }
+    s += "search \"" + searchWord + "\": only rows saying it";
   }
   lv_label_set_text(status, s.c_str());
   lv_obj_set_style_text_color(status, color(t.dim), 0);
@@ -519,15 +533,151 @@ static lv_obj_t* machineMenu(lv_obj_t* row) {
   return dd;
 }
 
+#if SCREEN_W >= 480
 static void pickSort(lv_event_t* e) {
   sortBy = lv_dropdown_get_selected((lv_obj_t*)lv_event_get_target(e));
   fillList();
   fromTop();
 }
+#else
+// the 2.8" screen's second row is four controls in 260 px: the sort and the search become icons, and the machine
+// and kind menus take the space they used to need. the sort is a tap-to-swap button: a star means newest first
+// (no star in the app's fonts: it's drawn below, like the Search magnifier), "A-Z" alphabetical — what it shows
+// is the order you're in
+static const char* const SORT_MARKS[] = {"", "A-Z"};  // the star is drawn, "A-Z" says it
+static const int8_t STAR[][2] = {{0, -7}, {2, -2}, {7, -2}, {3, 1}, {4, 6}, {0, 3}, {-4, 6}, {-3, 1}, {-7, -2}, {-2, -2}};  // one point up
+// the star filled as five point triangles plus the inner pentagon fanned from STAR[1]: a fan from the center would
+// put vertical edges in four of its triangles, and the SW rasterizer's vertical-edge branch fills the notch between
+// the legs (see the artifact in the 2.8" screenshots) - no triangle here shares an x with another
+static const int8_t STAR_FILL[][3] = {{0, 9, 1}, {2, 1, 3}, {4, 3, 5}, {6, 5, 7}, {8, 7, 9},
+                                      {1, 3, 5}, {1, 5, 7}, {1, 7, 9}};
+static void sortStar(lv_event_t* e) {
+  if (sortBy != NEWEST) {
+    return;
+  }
+  lv_layer_t* layer = lv_event_get_layer(e);
+  if (!layer) {
+    return;
+  }
+  lv_area_t r;
+  lv_obj_get_coords((lv_obj_t*)lv_event_get_target(e), &r);
+  int cx = (r.x1 + r.x2) / 2, cy = (r.y1 + r.y2) / 2;
+  const Theme& t = theme();
+  lv_draw_triangle_dsc_t d;
+  lv_draw_triangle_dsc_init(&d);
+  d.bg_color = color(t.text);
+  d.bg_opa = LV_OPA_COVER;
+  for (const auto& tri : STAR_FILL) {  // one triangle per point, then the pentagon core
+    d.p[0].x = cx + STAR[tri[0]][0], d.p[0].y = cy + STAR[tri[0]][1];
+    d.p[1].x = cx + STAR[tri[1]][0], d.p[1].y = cy + STAR[tri[1]][1];
+    d.p[2].x = cx + STAR[tri[2]][0], d.p[2].y = cy + STAR[tri[2]][1];
+    lv_draw_triangle(layer, &d);
+  }
+}
+static void sortTapped(lv_event_t* e) {
+  sortBy = sortBy == NEWEST ? NAME : NEWEST;
+  lv_label_set_text(lv_obj_get_child((lv_obj_t*)lv_event_get_target(e), 0), SORT_MARKS[sortBy]);
+  fillList();
+  fromTop();
+}
+#endif
+
+static void sortControl(lv_obj_t* row) {
+#if SCREEN_W >= 480
+  lv_obj_t* dd = lv_dropdown_create(row);
+  lv_dropdown_set_options(dd, "Newest\nA-Z");
+  lv_dropdown_set_selected(dd, sortBy);
+  lv_obj_set_height(dd, 30);
+  lv_obj_set_flex_grow(dd, 1);
+  menuStyle(dd);
+  lv_obj_add_event_cb(dd, pickSort, LV_EVENT_VALUE_CHANGED, 0);
+#else
+  // the words don't fit on the 2.8": newness is drawn as a star, "A-Z" is short enough to say
+  lv_obj_t* b = button(row, SORT_MARKS[sortBy], sortTapped);
+  lv_obj_set_size(b, 44, 30);
+  lv_obj_set_style_text_font(b, &lv_font_montserrat_12, 0);
+  lv_obj_add_event_cb(b, sortStar, LV_EVENT_DRAW_POST, 0);
+#endif
+}
 
 void ui::firmwareSource(bool hub) {
   source = hub ? HUB : SD;
   sourceChosen = true;  // (the SD card's even with none on it: no Wi-Fi then)
+}
+
+// ----------------------------------------------------------------------------------------------- search ---
+// typing a few letters: the lists show only rows that say them (catalog::match: names, authors, kinds, files).
+// The word stays for as long as the page's open (for both lists): tapping Search again changes it, and typing
+// nothing stops the search. The keyboard takes the whole screen, so this is its own page, like the Wi-Fi one
+static void searched(lv_event_t* e) {
+  if (lv_event_get_code(e) == LV_EVENT_READY) {
+    searchWord = lv_textarea_get_text(searchTa);
+    fresh = true;  // (a new list: from the top)
+  }
+  go(firmwarePage);
+}
+
+static void searchPage(lv_obj_t* page) {
+  const Theme& t = theme();
+  fullscreen(true);
+  std::string title = searchWord.empty() ? "Search" : "Search: \"" + searchWord + "\"";
+  header(page, title.c_str(), firmwarePage);
+  lv_obj_t* r = box(page, LV_FLEX_FLOW_ROW);
+  searchTa = lv_textarea_create(r);
+  lv_textarea_set_one_line(searchTa, true);
+  lv_textarea_set_placeholder_text(searchTa, "a name, an author, a kind, a file");
+  lv_obj_set_flex_grow(searchTa, 1);
+  lv_obj_add_state(searchTa, LV_STATE_FOCUSED);
+  label(page, "The lists show only what says these letters.", &lv_font_montserrat_12, t.dim);
+  lv_obj_t* kb = lv_keyboard_create(page);
+  lv_obj_set_size(kb, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_flex_grow(kb, 1);
+  lv_keyboard_set_textarea(kb, searchTa);
+  lv_obj_add_event_cb(kb, searched, LV_EVENT_READY, 0);
+  lv_obj_add_event_cb(kb, searched, LV_EVENT_CANCEL, 0);
+}
+
+#if SCREEN_W < 480
+// the 2.8" screen has no room for the word, and the app's fonts (LVGL's icon set) have no magnifier: so the
+// Search icon is drawn here — a glass and a handle, in the same ink the words are drawn with
+static void searchGlass(lv_event_t* e) {
+  lv_layer_t* layer = lv_event_get_layer(e);
+  lv_obj_t* b = (lv_obj_t*)lv_event_get_target(e);
+  if (!layer) {
+    return;
+  }
+  const Theme& t = theme();
+  lv_area_t r;
+  lv_obj_get_coords(b, &r);  // where it's drawn: the screen, not its row
+  int cx = (r.x1 + r.x2) / 2 - 2, cy = (r.y1 + r.y2) / 2 - 2;
+  lv_draw_arc_dsc_t a;
+  lv_draw_arc_dsc_init(&a);
+  a.color = color(t.text);
+  a.width = 2;  // the ring
+  a.center.x = cx, a.center.y = cy;
+  a.radius = 5;
+  a.start_angle = 0;
+  a.end_angle = 360;
+  lv_draw_arc(layer, &a);
+  lv_draw_line_dsc_t h;
+  lv_draw_line_dsc_init(&h);
+  h.color = color(t.text);
+  h.width = 2;
+  h.p1.x = cx + 4, h.p1.y = cy + 4;
+  h.p2.x = cx + 9, h.p2.y = cy + 9;
+  lv_draw_line(layer, &h);
+}
+#endif
+
+static void searchButton(lv_obj_t* row) {
+#if SCREEN_W >= 480
+  lv_obj_t* b = button(row, "Search", [](lv_event_t*) { go(searchPage); });
+  lv_obj_set_size(b, 64, 30);
+#else
+  lv_obj_t* b = button(row, "", [](lv_event_t*) { go(searchPage); });
+  lv_obj_set_size(b, 44, 30);
+  lv_obj_add_event_cb(b, searchGlass, LV_EVENT_DRAW_POST, 0);
+#endif
 }
 
 void ui::firmwarePage(lv_obj_t* page) {
@@ -584,19 +734,21 @@ void ui::firmwarePage(lv_obj_t* page) {
     if (!at) {
       kindFilter.clear();
     }
-    for (int i = 0; i < 2; i++) {
-      lv_obj_t* dd = lv_dropdown_create(opts);
-      lv_dropdown_set_options(dd, i ? "Newest\nA-Z" : o.c_str());
-      lv_dropdown_set_selected(dd, i ? sortBy : at);
-      lv_obj_set_height(dd, 30);
-      lv_obj_set_flex_grow(dd, 1);
-      menuStyle(dd);
-      lv_obj_add_event_cb(dd, i ? pickSort : pickKind, LV_EVENT_VALUE_CHANGED, 0);
-    }
+    lv_obj_t* dd = lv_dropdown_create(opts);  // (the kinds: the order and the search go by their own buttons)
+    lv_dropdown_set_options(dd, o.c_str());
+    lv_dropdown_set_selected(dd, at);
+    lv_obj_set_height(dd, 30);
+    lv_obj_set_flex_grow(dd, 1);
+    menuStyle(dd);
+    lv_obj_add_event_cb(dd, pickKind, LV_EVENT_VALUE_CHANGED, 0);
+    sortControl(opts);
+    searchButton(opts);  // (search is next to the other filters: both lists take the word)
   }
   if (source == SD && !catalog::sd.empty()) {
     lv_obj_t* opts = box(page, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(opts, 4, 0);  // (same as the Hub's: the menu and the Search button keep apart)
     machineMenu(opts);
+    searchButton(opts);
   }
   list = scroller(page);
   lv_obj_set_layout(list, LV_LAYOUT_NONE);  // (the rows are where they're scrolled to: place)

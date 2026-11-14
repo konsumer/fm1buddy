@@ -462,7 +462,7 @@ const char* kits::unpack(const std::vector<uint8_t>& b, const std::string& dir) 
       for (auto& c : n) {
         c = tolower((unsigned char)c);
       }
-      char num[4];
+      char num[8];  // the widest s+1 can be (a bank's byte, not clamped to KIT_SAMPLES)
       snprintf(num, sizeof num, "%02d-", s + 1);
       if (!writeWav(kd + "/" + (ks[k].drum ? "" : num) + n + ".wav", decode(&b[off], len, e[18]), rate)) {
         return "Can't write it to the SD card.";

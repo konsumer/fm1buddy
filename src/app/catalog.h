@@ -87,6 +87,9 @@ void hashSd();
 bool sdHashed();
 // all of item i of list l (what it is, where it comes from: read from HUB_LIST)
 Firmware details(const FwList& l, size_t i);
+// does item f of list l say word: its name, author, version, file, machine or a kind (what the row shows or
+// names it by, plus the file it came from). Folded: case and accents don't matter, "" says any
+bool match(const FwList& l, const FwItem& f, const std::string& word);
 // a firmware's name from its file: without the version, lower case ("ZP12-2.4.4.fwsc" -> "zp12")
 std::string stem(const std::string& file);
 // the Hub's firmware that SD card firmware i is a version of: the very file, else the same device ID and the same name

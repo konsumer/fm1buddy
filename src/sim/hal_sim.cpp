@@ -1,6 +1,21 @@
 // The board, pretended: a folder for the SD card, files for the settings, pretend Wi-Fi (any password works but
 // "wrong"), and the real internet through libcurl.
-#include <CommonCrypto/CommonDigest.h>
+
+#ifdef __APPLE__
+    #include <CommonCrypto/CommonDigest.h>
+#else
+    #include <cstdint>
+    #include <openssl/sha.h>
+    #include <openssl/md5.h>
+    typedef uint32_t CC_LONG;
+    #define CC_SHA256_DIGEST_LENGTH SHA256_DIGEST_LENGTH
+    #define CC_SHA256(data, len, md) SHA256((const unsigned char *)(data), (size_t)(len), (unsigned char *)(md))
+    typedef SHA256_CTX CC_SHA256_CTX;
+    #define CC_SHA256_Init(ctx) SHA256_Init(ctx)
+    #define CC_SHA256_Update(ctx, data, len) SHA256_Update((ctx), (const unsigned char *)(data), (size_t)(len))
+    #define CC_SHA256_Final(md, ctx) SHA256_Final((unsigned char *)(md), (ctx))
+#endif
+
 #include <curl/curl.h>
 #include <dirent.h>
 #include <stdarg.h>
@@ -8,6 +23,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mount.h>
+#ifdef __linux__
+    #include <sys/vfs.h>
+#endif
 #include <sys/stat.h>
 
 #include <algorithm>

@@ -1,4 +1,10 @@
 .pio/
 .vscode/
 build/
-sim/
+site/fw/
+.DS_Store
+src/idf_component.yml*
+/sim/
+compile_commands.json
+.cache/
+__pycache__

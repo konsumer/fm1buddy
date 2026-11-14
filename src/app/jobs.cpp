@@ -19,6 +19,7 @@
 #include "settings.h"
 #include "sloop.h"
 #include "uboot.h"
+#include "i18n.h"
 
 namespace jobs {
 std::atomic<int> kind{NONE}, step{IDLE};
@@ -106,7 +107,7 @@ static bool wifiFor(bool asked) {
     return true;
   }
   if (!asked) {
-    error = "Bluetooth MIDI is on, so Wi-Fi is off.";
+    error = tr("Bluetooth MIDI is on, so Wi-Fi is off.");
     return false;
   }
   btPaused = true;
@@ -121,7 +122,7 @@ static bool joinSaved(bool asked = true) {
     return true;  // (still on)
   }
   if (!settings.ssid[0]) {
-    error = "No Wi-Fi network yet: pick one in Settings.";
+    error = tr("No Wi-Fi network yet: pick one in Settings.");
     return false;
   }
   step = JOINING;
@@ -147,7 +148,7 @@ static std::string readText(const std::string& p) {
 
 static void hubJob(void*) {
   if (!hal::sd()) {
-    error = "No SD card: the list is kept on it.";
+    error = tr("No SD card: the list is kept on it.");
     return finish(false);
   }
   if (!joinSaved(hubAsked)) {
@@ -165,7 +166,7 @@ static void hubJob(void*) {
   hal::log("job: HTTP %d", code);
   if (code != 200 && code != 304) {
     if (code > 0) {
-      error = "The Hub said " + std::to_string(code) + ".";
+      error = tr("The Hub said ") + std::to_string(code) + ".";
     }
     return finish(false);
   }
@@ -174,7 +175,7 @@ static void hubJob(void*) {
   if (code == 304) {  // the same list: the one kept
     ok = catalog::loadHub(hub, hubUpdated);
     if (!ok) {
-      error = "The Hub's list on the SD card didn't read.";
+      error = tr("The Hub's list on the SD card didn't read.");
     }
   } else if ((ok = catalog::parseHub(hub, hubUpdated, error))) {
     if (FILE* f = fopen(etagPath.c_str(), "w")) {
@@ -214,7 +215,7 @@ bool jobs::newer(const std::string& a, const std::string& b) {
 static void checkUpdateJob(void*) {
   updateTag.clear();
   if (!hal::sd()) {
-    error = "No SD card: the update goes on it first.";
+    error = tr("No SD card: the update goes on it first.");
     return finish(false);
   }
   if (!joinSaved()) {
@@ -227,7 +228,7 @@ static void checkUpdateJob(void*) {
   hal::log("job: version.json: HTTP %d", code);
   if (code != 200) {
     if (code > 0) {
-      error = "The installer page said " + std::to_string(code) + ".";
+      error = tr("The installer page said ") + std::to_string(code) + ".";
     }
     return finish(false);
   }
@@ -243,7 +244,7 @@ static void checkUpdateJob(void*) {
   }
   std::string tag;
   if (deserializeJson(doc, text) || (tag = doc["tag"] | "").empty()) {
-    error = "The installer page's version didn't read.";
+    error = tr("The installer page's version didn't read.");
     return finish(false);
   }
   // a release from before it listed its files has the 2.8"'s, at least; the others only if it says so
@@ -265,7 +266,7 @@ bool jobs::checkUpdate() {
 
 static void updateJob(void*) {
   if (!hal::sd()) {
-    error = "No SD card: the update goes on it first.";
+    error = tr("No SD card: the update goes on it first.");
     return finish(false);
   }
   if (!joinSaved()) {
@@ -278,7 +279,7 @@ static void updateJob(void*) {
   hal::log("job: %s: HTTP %d", FM1BUDDY_BIN, code);
   if (code != 200) {
     if (code > 0) {
-      error = "The installer page said " + std::to_string(code) + ".";
+      error = tr("The installer page said ") + std::to_string(code) + ".";
     }
     return finish(false);
   }
@@ -286,7 +287,7 @@ static void updateJob(void*) {
   char sum[65];
   if (!updateSha.empty() && (!hal::sha256(p.c_str(), sum) || strcasecmp(sum, updateSha.c_str()))) {
     remove(p.c_str());
-    error = "The download isn't what the installer page says it is (sha256).";
+    error = tr("The download isn't what the installer page says it is (sha256).");
     return finish(false);
   }
   step = UPDATING;
@@ -307,7 +308,7 @@ bool jobs::update() {
 // target from the Hub into /fm1: false (error says why)
 static bool fetch() {
   if (!hal::sd()) {
-    error = "No SD card.";
+    error = tr("No SD card.");
     return false;
   }
   if (!joinSaved()) {
@@ -322,7 +323,7 @@ static bool fetch() {
   hal::log("job: HTTP %d", code);
   if (code != 200) {
     if (code > 0) {
-      error = "The server said " + std::to_string(code) + ".";
+      error = tr("The server said ") + std::to_string(code) + ".";
     }
     return false;
   }
@@ -330,11 +331,11 @@ static bool fetch() {
   struct stat st;
   char sum[65];
   if (stat(p.c_str(), &st) || (uint32_t)st.st_size != target.size) {
-    error = "The download stopped part way.";
+    error = tr("The download stopped part way.");
   } else if (!hal::sha256(p.c_str(), sum) || strcasecmp(sum, target.sha256.c_str())) {
-    error = "The download isn't what the Hub says it is (sha256).";
+    error = tr("The download isn't what the Hub says it is (sha256).");
   } else if (catalog::product(p.c_str()) != target.product) {
-    error = "The package isn't for the device the Hub says.";
+    error = tr("The package isn't for the device the Hub says.");
   } else {
     return true;
   }
@@ -407,7 +408,7 @@ static void fwUpdateJob(void*) {
   remove((dir + oldFile).c_str());
   remove((dir + file).c_str());  // (the very same file, if it's there: freeName)
   if (rename((dir + target.file).c_str(), (dir + file).c_str())) {
-    error = "Can't name it " + file + " on the SD card.";
+    error = tr("Can't name it ") + file + tr(" on the SD card.");
     return finish(false);
   }
   target.file = saved = file;
@@ -461,7 +462,7 @@ static void installJob(void*) {
     return finish(false);
   }
   if (!target.sha256.empty() && strcasecmp(pkg.sha256, target.sha256.c_str())) {
-    error = "The file on the SD card isn't what the Hub says it is (sha256): download it again.";
+    error = tr("The file on the SD card isn't what the Hub says it is (sha256): download it again.");
     return finish(false);
   }
   std::string name;
@@ -501,7 +502,7 @@ static void scanJob(void*) {
   wifiFor(true);
   bool good = hal::wifiScan(aps);
   if (!good) {
-    error = "Wi-Fi didn't scan.";
+    error = tr("Wi-Fi didn't scan.");
   }
   finish(good);
 }
@@ -554,7 +555,7 @@ static void probeJob(void*) {
 static void sendJob(void*) {
   std::vector<uint8_t> data;
   if (!sounds::load(syxFile, data)) {
-    error = "Can't read it from the SD card.";
+    error = tr("Can't read it from the SD card.");
     return finish(false);
   }
   step = SENDING;
@@ -575,7 +576,7 @@ static void voiceJob(void*) {
   }
   saved = sounds::save(syx, "voice");
   if (saved.empty()) {
-    error = "Can't write it to the SD card.";
+    error = tr("Can't write it to the SD card.");
   }
   finish(!saved.empty());
 }
@@ -809,14 +810,14 @@ static bool saveBackup(const std::vector<uint8_t>& a, const uboot::Chip& chip, c
     ok &= f && !fclose(f);
   }
   if (!ok) {
-    error = "Can't write it to the SD card.";
+    error = tr("Can't write it to the SD card.");
   }
   return ok;
 }
 
 static void backupJob(void*) {
   if (!hal::sd()) {
-    error = "No SD card: the backup goes on it.";
+    error = tr("No SD card: the backup goes on it.");
     return finish(false);
   }
   mkdirs();
@@ -840,7 +841,7 @@ static void backupJob(void*) {
     fmReading("READING IT AGAIN", 50, 50);
     e = mapRead(chip, b, &a);
     if (!e && a != b) {
-      e = "It read differently twice: try again.";
+      e = tr("It read differently twice: try again.");
     }
   }
   fmShow(e ? "FAILED" : "DONE", e ? -1 : 100, true);
@@ -854,7 +855,7 @@ static void backupJob(void*) {
   if (e) {
     bool stuck = uboot::stuck();
     hal::usbRestart();  // (whatever the boot loader left behind: the FM-1 is found again)
-    error = std::string(e) + (stuck ? " Switch the FM-1 off and on to get it back." : "");
+    error = std::string(e) + (stuck ? tr(" Switch the FM-1 off and on to get it back.") : "");
     return finish(false);
   }
   finish(saveBackup(a, chip, was, false, was));
@@ -883,7 +884,7 @@ static void identifyJob(void*) {
   if (e) {
     bool stuck = uboot::stuck();
     hal::usbRestart();
-    error = std::string(e) + (stuck ? " Switch the FM-1 off and on to get it back." : "");
+    error = std::string(e) + (stuck ? tr(" Switch the FM-1 off and on to get it back.") : "");
     return finish(false);
   }
   finish(true);
@@ -925,7 +926,7 @@ static bool isBackup(const std::string& p) {
 
 static void prepareJob(void*) {
   if (!hal::sd()) {
-    error = "No SD card.";
+    error = tr("No SD card.");
     return finish(false);
   }
   mkdirs();
@@ -958,14 +959,14 @@ static const char* image(const std::string& from, std::vector<uint8_t>& out, boo
   if (isBackup(from)) {
     FILE* f = fopen(p.c_str(), "rb");
     if (!f) {
-      return "Can't open the backup on the SD card.";
+      return tr("Can't open the backup on the SD card.");
     }
     out.resize(1024 * 1024);
     size_t n = fread(out.data(), 1, out.size(), f);
     int more = fgetc(f);
     fclose(f);
     if (n != out.size() || more != EOF) {
-      return "That backup isn't all of a flash (1 MB).";
+      return tr("That backup isn't all of a flash (1 MB).");
     }
     smk = uboot::smkFlash(out);
     out.resize(WRITE_TO);  // (its key_mac stays as the chip has it)
@@ -977,14 +978,14 @@ static const char* image(const std::string& from, std::vector<uint8_t>& out, boo
   }
   uint32_t at, n;
   if (!pkg.flash(at, n)) {
-    return "That package has no flash image in it (or it's damaged).";
+    return tr("That package has no flash image in it (or it's damaged).");
   }
   smk = isSmk(pkg.product);
   if (strncmp(pkg.product, "FM-1_", 5) && !smk) {
-    return "That package isn't for the FM-1 or the SMK-37.";
+    return tr("That package isn't for the FM-1 or the SMK-37.");
   }
   if (n <= WRITE_FROM || n > (smk ? SMK_CAL : WRITE_TO)) {
-    return "Its flash image is a size no firmware's is.";
+    return tr("Its flash image is a size no firmware's is.");
   }
   out.assign(pkg.image + at, pkg.image + at + n);
   return 0;
@@ -1000,7 +1001,7 @@ static void recoverJob(void*) {
   std::vector<uint8_t> want, now, back;
   bool forSmk = false;
   step = GETTING_READY;
-  const char* e = !hal::sd() ? "No SD card." : from.empty() ? "Nothing was chosen to go on it."
+  const char* e = !hal::sd() ? tr("No SD card.") : from.empty() ? tr("Nothing was chosen to go on it.")
                                                             : image(from, want, forSmk);
   if (e) {
     error = e;
@@ -1018,13 +1019,13 @@ static void recoverJob(void*) {
   if (e) {  // its firmware came instead (it was on all along, or the key was missed): say so
     for (int d = 0; d < MIDI_USB; d++) {
       if (fm1::candidate(d)) {
-        e = "It started its firmware, not its boot loader: it had power all along. Tap Try again, and unplug it as well "
-            "as switching it off.";
+        e = tr("It started its firmware, not its boot loader: it had power all along. Tap Try again, and unplug it as well "
+            "as switching it off.");
       }
     }
   }
   if (!e && (chip.key != FM1_KEY || !uboot::fm1Flash(chip.flashId) || chip.size < WRITE_TO)) {
-    e = "That isn't the FM-1's chip: nothing was written.";
+    e = tr("That isn't the FM-1's chip: nothing was written.");
   }
   if (!e) {
     fmStart(forSmk, "RECOVERY");
@@ -1053,16 +1054,16 @@ static void recoverJob(void*) {
       smk = giveCal = true;
     } else if (blank) {
       calLost = true;
-      e = "No calibration: an FM-1, or an SMK-37 that lost it. Nothing was written.";
+      e = tr("No calibration: an FM-1, or an SMK-37 that lost it. Nothing was written.");
     }
   }
   if (!e) {
     hal::log("recover: it's %s, the image is for %s%s", smk ? "an SMK-37" : "an FM-1", forSmk ? "an SMK-37" : "an FM-1",
-             giveCal ? " (with the backup's calibration)" : "");
+             giveCal ? tr(" (with the backup's calibration)") : "");
     if (smk != forSmk) {
-      e = smk ? "This is an SMK-37, and that's for the FM-1: nothing was written."
-              : "This is an FM-1 (no SMK-37 calibration on it), and that's for the SMK-37: nothing was written. An "
-                "SMK-37 whose calibration is gone takes another SMK-37's backup.";
+      e = smk ? tr("This is an SMK-37, and that's for the FM-1: nothing was written.")
+              : tr("This is an FM-1 (no SMK-37 calibration on it), and that's for the SMK-37: nothing was written. An "
+                "SMK-37 whose calibration is gone takes another SMK-37's backup.");
     }
   }
   std::vector<uint32_t> sectors;
@@ -1121,7 +1122,7 @@ static void recoverJob(void*) {
     fmReading("CHECKING", 70, 30);
     e = mapRead(chip, back, &expect);
     if (!e && back != expect) {
-      e = "It reads back differently from what was written.";
+      e = tr("It reads back differently from what was written.");
     }
   }
   fmShow(e ? "FAILED" : "DONE", e ? -1 : 100, true);
@@ -1130,11 +1131,11 @@ static void recoverJob(void*) {
   uboot::leave();
   if (e) {
     hal::usbRestart();  // (whatever the boot loader left behind)
-    error = std::string(e) + (sectors.empty() ? "" : " It may not start now: switch it off, and try again.");
+    error = std::string(e) + (sectors.empty() ? "" : tr(" It may not start now: switch it off, and try again."));
     return finish(false);
   }
-  error = sectors.empty() ? "It already had that on it."
-          : giveCal       ? "Done, with the backup's calibration (another keyboard's: keys and pads may be a little off)."
+  error = sectors.empty() ? tr("It already had that on it.")
+          : giveCal       ? tr("Done, with the backup's calibration (another keyboard's: keys and pads may be a little off).")
                           : "";
   hal::save(RECOVER_KEY, "", 1);  // (done: not again)
   recoverCal = 0;
@@ -1238,30 +1239,30 @@ static void sloopJob(void*) {
   const char* e = 0;
   saved.clear();
   if (kind == SLOOP_BACKUP) {
-    doing = "Backing it up";
+    doing = tr("Backing it up");
     sloop::Info info;
     e = sloop::info(device, info);
     if (!e) {
       e = sloop::backup(device, info, saved, progress);
     }
   } else if (kind == SLOOP_RESTORE) {
-    doing = "Backing it up, then restoring";
+    doing = tr("Backing it up, then restoring");
     e = sloop::restore(device, sloopFile, saved, progress);
   } else if (kind == SLOOP_PROJECT) {
-    doing = "Loading the project";
+    doing = tr("Loading the project");
     e = sloop::loadProject(device, sloopFile, sloopFrom, sloopTo, progress);
   } else if (kind == SLOOP_SONG) {
-    doing = "Saving the song";
+    doing = tr("Saving the song");
     sloop::Info info;
     e = sloop::info(device, info);
     if (!e) {
       e = sloop::saveSong(device, info, saved, progress);
     }
   } else if (kind == SLOOP_SONG_IN) {
-    doing = "Saving its song, then loading";
+    doing = tr("Saving its song, then loading");
     e = sloop::loadSong(device, sloopFile, saved, progress);
   } else {
-    doing = "Loading the samples";
+    doing = tr("Loading the samples");
     e = sloop::loadSamples(device, sloopFile, sloopTo, progress);
   }
   if (e) {
@@ -1308,89 +1309,89 @@ bool jobs::sloopSamples(int d, const std::string& source, int slot) {
 std::string jobs::status() {
   switch ((int)step) {
     case JOINING:
-      return "Joining " + std::string(kind == JOIN ? ssid : settings.ssid) + "...";
+      return tr("Joining ") + std::string(kind == JOIN ? ssid : settings.ssid) + "...";
     case FETCHING: {
       if (kind == HUB) {
-        return "Getting the Hub's list...";
+        return tr("Getting the Hub's list...");
       }
       if (kind == CHECK_UPDATE) {
-        return "Checking for an update...";
+        return tr("Checking for an update...");
       }
       if (kind == INSTALL) {
         uint32_t t = total, d = done;
-        return "Downloading" + (t ? " " + std::to_string((unsigned long long)d * 100 / t) + "%" : std::string("..."));
+        return tr("Downloading") + (t ? " " + std::to_string((unsigned long long)d * 100 / t) + "%" : std::string("..."));
       }
       uint32_t t = total, d = done;
-      return t ? "Downloading " + std::to_string((unsigned long long)d * 100 / t) + "%" : "Downloading...";
+      return t ? tr("Downloading ") + std::to_string((unsigned long long)d * 100 / t) + "%" : tr("Downloading...");
     }
     case CHECKING:
-      return "Checking it...";
+      return tr("Checking it...");
     case UPDATING: {
       uint32_t t = total, d = done;
-      return "Installing " + std::to_string(t ? (unsigned long long)d * 100 / t : 0) + "%: keep it powered";
+      return tr("Installing ") + std::to_string(t ? (unsigned long long)d * 100 / t : 0) + tr("%: keep it powered");
     }
     case ASKING:
-      return "Looking for the FM-1...";
+      return tr("Looking for the FM-1...");
     case VERIFYING:
-      return "The FM-1 is checking the package...";
+      return tr("The FM-1 is checking the package...");
     case LOADER:
-      return "The FM-1 is starting its update loader...";
+      return tr("The FM-1 is starting its update loader...");
     case WRITING: {
       // what a loader reads besides the firmware differs (header parts, other files): never past 99% until it's
       // finished, and when it goes quiet after the data, it's checking or storing it, not stuck
       uint32_t t = total, d = done;
       if (d && hal::millis() - askedAt > 2000) {
-        return "The FM-1 is finishing the update: keep it plugged in";
+        return tr("The FM-1 is finishing the update: keep it plugged in");
       }
       unsigned long long pct = t ? (unsigned long long)d * 100 / t : 0;
-      return "Writing " + std::to_string(pct > 99 ? 99 : pct) + "%: keep the FM-1 plugged in";
+      return tr("Writing ") + std::to_string(pct > 99 ? 99 : pct) + tr("%: keep the FM-1 plugged in");
     }
     case RESTARTING:
-      return "The FM-1 is restarting...";
+      return tr("The FM-1 is restarting...");
     case READING:
-      return "Reading the list...";
+      return tr("Reading the list...");
     case SENDING: {
       uint32_t t = total, d = done;
       std::string pct = std::to_string(t ? (unsigned long long)d * 100 / t : 0) + "%...";
       if (kind == RESTORE) {
-        return phase == 0 ? "Making the kits..." : (phase == 1 ? "Sending the kits " : "Sending the song ") + pct;
+        return phase == 0 ? tr("Making the kits...") : (phase == 1 ? tr("Sending the kits ") : tr("Sending the song ")) + pct;
       }
-      return "Sending " + pct;
+      return tr("Sending ") + pct;
     }
     case ASKING_IT:
-      return "Asking it...";
+      return tr("Asking it...");
     case WRITING_FILES:
-      return "Writing the files...";
+      return tr("Writing the files...");
     case BOOT_LOADER:
-      return "Into its boot loader...";
+      return tr("Into its boot loader...");
     case READING_FLASH: {
       uint32_t t = total, d = done;
-      return std::string(reading == 1 ? "Reading it " : "Reading it again ") +
+      return std::string(reading == 1 ? tr("Reading it ") : tr("Reading it again ")) +
              std::to_string(t ? (unsigned long long)d * 100 / t : 0) + "%...";
     }
     case LEAVING:
-      return "Back to its firmware...";
+      return tr("Back to its firmware...");
     case GETTING_READY:
-      return "Getting it ready...";
+      return tr("Getting it ready...");
     case KEYING:
       switch (hal::keyState()) {
         case hal::KEY_OFF:
-          return "Unplug the FM-1, and switch it off.";
+          return tr("Unplug the FM-1, and switch it off.");
         case hal::KEY_ANSWERED:
-          return "It answered! Its boot loader is starting...";
+          return tr("It answered! Its boot loader is starting...");
         case hal::KEY_HOST:
-          return "Its boot loader is starting...";
+          return tr("Its boot loader is starting...");
       }
-      return "Now plug the FM-1 back in, and switch it on.";
+      return tr("Now plug the FM-1 back in, and switch it on.");
     case SAVING:
-      return "Saving its flash as it was...";
+      return tr("Saving its flash as it was...");
     case WRITING_FLASH: {
       uint32_t t = total, d = done;
-      return "Writing " + std::to_string(t ? (unsigned long long)d * 100 / t : 0) + "%: keep it plugged in and on";
+      return tr("Writing ") + std::to_string(t ? (unsigned long long)d * 100 / t : 0) + tr("%: keep it plugged in and on");
     }
     case CHECKING_FLASH: {
       uint32_t t = total, d = done;
-      return "Checking it " + std::to_string(t ? (unsigned long long)d * 100 / t : 0) + "%...";
+      return tr("Checking it ") + std::to_string(t ? (unsigned long long)d * 100 / t : 0) + "%...";
     }
     case WORKING: {
       uint32_t t = total, d = done;
@@ -1398,9 +1399,9 @@ std::string jobs::status() {
     }
     case GETTING: {
       uint32_t t = total, d = done;
-      return (phase ? "Getting the kits " : "Getting the song ") + std::to_string(t ? (unsigned long long)d * 100 / t : 0) +
+      return (phase ? tr("Getting the kits ") : tr("Getting the song ")) + std::to_string(t ? (unsigned long long)d * 100 / t : 0) +
              "%...";
     }
   }
-  return kind == SCAN && running ? "Looking for networks..." : "";
+  return kind == SCAN && running ? tr("Looking for networks...") : "";
 }

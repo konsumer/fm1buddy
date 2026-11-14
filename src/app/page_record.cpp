@@ -17,6 +17,7 @@
 #include "midi.h"
 #include "record.h"
 #include "ui_priv.h"
+#include "i18n.h"
 
 using namespace ui;
 
@@ -75,13 +76,13 @@ static void recTapped(lv_event_t*) {
 
 static void deleteTapped(lv_event_t* e) {
   lv_obj_t* l = lv_obj_get_child((lv_obj_t*)lv_event_get_target(e), 0);
-  if (strcmp(lv_label_get_text(l), "Sure?")) {
-    lv_label_set_text(l, "Sure?");  // a second tap deletes it
+  if (strcmp(lv_label_get_text(l), tr("Sure?"))) {
+    lv_label_set_text(l, tr("Sure?"));  // a second tap deletes it
     return;
   }
   std::string* name = (std::string*)lv_event_get_user_data(e);
   if (remove(catalog::path(std::string(REC_DIR "/") + *name).c_str())) {
-    toast("Can't delete it.", true);
+    toast(tr("Can't delete it."), true);
     return;
   }
   go(recordPage);
@@ -146,7 +147,7 @@ static lv_obj_t* wrapped(lv_obj_t* body, const char* text, uint32_t c) {
 
 void ui::recordPage(lv_obj_t* page) {
   const Theme& t = theme();
-  header(page, "Record audio", soundsPage);
+  header(page, tr("Record audio"), soundsPage);
   lv_obj_t* body = scroller(page);
   lv_obj_set_style_pad_row(body, 4, 0);
   lv_obj_add_event_cb(body, gone, LV_EVENT_DELETE, 0);
@@ -158,15 +159,15 @@ void ui::recordPage(lv_obj_t* page) {
 
   if (!there) {
     wrapped(body,
-            devText("No USB audio on the hub. The FM-1 sends its sound over USB with Felucca and the firmwares built on it, "
-                    "such as SLOOP. A class-compliant USB microphone or sound card works too.")
+            devText(tr("No USB audio on the hub. The FM-1 sends its sound over USB with Felucca and the firmwares built on it, "
+                    "such as SLOOP. A class-compliant USB microphone or sound card works too."))
                 .c_str(),
             t.dim);
   } else {
     midi::Dev v;
-    std::string src = a.dev >= 0 && midi::dev(a.dev, v) ? v.name : "USB audio";
+    std::string src = a.dev >= 0 && midi::dev(a.dev, v) ? v.name : tr("USB audio");
     char s[64];
-    snprintf(s, sizeof s, "  %.1f kHz %s", a.rate / 1000.0, a.channels == 2 ? "stereo" : "mono");
+    snprintf(s, sizeof s, "  %.1f kHz %s", a.rate / 1000.0, a.channels == 2 ? tr("stereo") : tr("mono"));
     lv_obj_t* l = line(body, (src + s).c_str(), &lv_font_montserrat_14, t.text);
     lv_obj_set_width(l, LV_PCT(100));
 
@@ -182,7 +183,7 @@ void ui::recordPage(lv_obj_t* page) {
       lv_obj_set_flex_grow(bars[c], 1);
       shown[c] = 0;
     }
-    clipLabel = label(body, devText(LV_SYMBOL_WARNING " It clipped: turn the FM-1 down (its USB level follows MASTER)").c_str(),
+    clipLabel = label(body, devText(tr(LV_SYMBOL_WARNING " It clipped: turn the FM-1 down (its USB level follows MASTER)")).c_str(),
                       &lv_font_montserrat_12, warn());
     lv_obj_add_flag(clipLabel, LV_OBJ_FLAG_HIDDEN);
     clipAt = 0;
@@ -192,7 +193,7 @@ void ui::recordPage(lv_obj_t* page) {
     lv_obj_set_flex_align(r, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_column(r, 8, 0);
     lv_obj_set_style_pad_ver(r, 4, 0);
-    recBtn = button(r, wasRecording ? LV_SYMBOL_STOP "  Stop" : LV_SYMBOL_BULLET "  Record", recTapped);
+    recBtn = button(r, wasRecording ? tr(LV_SYMBOL_STOP "  Stop") : tr(LV_SYMBOL_BULLET "  Record"), recTapped);
     if (!wasRecording) {  // record: the theme's red (its first tag color), as the clip warning
       lv_obj_set_style_bg_color(recBtn, color(warn()), 0);
       lv_obj_set_style_text_color(recBtn, color(t.bg), 0);
@@ -206,7 +207,7 @@ void ui::recordPage(lv_obj_t* page) {
   }
 
   // the takes
-  lv_obj_t* h = label(body, "On the SD card (" REC_DIR ")", &lv_font_montserrat_14, t.text);
+  lv_obj_t* h = label(body, tr("On the SD card (" REC_DIR ")"), &lv_font_montserrat_14, t.text);
   lv_obj_set_style_pad_top(h, 6, 0);
   static std::vector<std::pair<std::string, uint32_t>> takes;  // (kept: the delete buttons point into it)
   takes.clear();
@@ -232,7 +233,7 @@ void ui::recordPage(lv_obj_t* page) {
     lv_obj_set_style_pad_column(r, 6, 0);
     lv_obj_t* l = line(r, tk.first.c_str(), &lv_font_montserrat_16, now ? t.accent : t.text);
     lv_obj_set_flex_grow(l, 1);
-    label(r, now ? "recording" : clock(takeMs(dir + "/" + tk.first, tk.second)).c_str(), &lv_font_montserrat_12,
+    label(r, now ? tr("recording") : clock(takeMs(dir + "/" + tk.first, tk.second)).c_str(), &lv_font_montserrat_12,
           t.dim);
     if (!now) {
       lv_obj_t* del = button(r, LV_SYMBOL_TRASH, deleteTapped, &tk.first);
@@ -240,9 +241,9 @@ void ui::recordPage(lv_obj_t* page) {
     }
   }
   if (takes.empty()) {
-    label(body, hal::sd() ? "None yet." : "No SD card.", &lv_font_montserrat_12, t.dim);
+    label(body, hal::sd() ? tr("None yet.") : tr("No SD card."), &lv_font_montserrat_12, t.dim);
   } else {
-    wrapped(body, "Copy them to a computer with USB disk (Settings).", t.dim);
+    wrapped(body, tr("Copy them to a computer with USB disk (Settings)."), t.dim);
   }
   tick = there ? live : [] {
     hal::AudioIn a;

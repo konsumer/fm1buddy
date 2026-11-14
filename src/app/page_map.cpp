@@ -13,6 +13,7 @@
 #include "midi.h"
 #include "midimap.h"
 #include "ui_priv.h"
+#include "i18n.h"
 
 using namespace ui;
 
@@ -69,8 +70,8 @@ static void addTapped(lv_event_t*);
 
 static void deleteTapped(lv_event_t* e) {
   lv_obj_t* l = lv_obj_get_child((lv_obj_t*)lv_event_get_target(e), 0);
-  if (strcmp(lv_label_get_text(l), "Sure?")) {
-    lv_label_set_text(l, "Sure?");  // a second tap deletes it
+  if (strcmp(lv_label_get_text(l), tr("Sure?"))) {
+    lv_label_set_text(l, tr("Sure?"));  // a second tap deletes it
     return;
   }
   std::vector<std::string> lines;
@@ -80,21 +81,21 @@ static void deleteTapped(lv_event_t* e) {
   if (i < (int)rules.size()) {
     lines.erase(lines.begin() + rules[i]);
     if (!writeFile(lines)) {
-      toast("Can't write " MAP_FILE ".", true);
+      toast(tr("Can't write " MAP_FILE "."), true);
       return;
     }
   }
-  reloaded("Deleted.");
+  reloaded(tr("Deleted."));
   go(mapPage);
 }
 
 void ui::mapPage(lv_obj_t* page) {
   const Theme& t = theme();
-  header(page, "Mapping", midiPage);
+  header(page, tr("Mapping"), midiPage);
   lv_obj_t* body = scroller(page);
   lv_obj_set_style_pad_row(body, 4, 0);
   if (!hal::sd()) {
-    label(body, "No SD card: the rules are kept on it.", &lv_font_montserrat_14, t.knob[0]);
+    label(body, tr("No SD card: the rules are kept on it."), &lv_font_montserrat_14, t.knob[0]);
     return;
   }
   std::vector<std::string> lines;
@@ -102,7 +103,7 @@ void ui::mapPage(lv_obj_t* page) {
   readFile(lines, ruleLines);
   std::string why = midi::mapProblem();
   if (!why.empty()) {
-    lv_obj_t* w = label(body, (why + " (that line is left out)").c_str(), &lv_font_montserrat_12, t.knob[0]);
+    lv_obj_t* w = label(body, (why + tr(" (that line is left out)")).c_str(), &lv_font_montserrat_12, t.knob[0]);
     lv_label_set_long_mode(w, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(w, LV_PCT(100));
   }
@@ -127,16 +128,16 @@ void ui::mapPage(lv_obj_t* page) {
     lv_obj_set_height(del, 30);
   }
   if (ruleLines.empty()) {
-    lv_obj_t* l = label(body, "No rules: everything a device plays goes to all the others.", &lv_font_montserrat_14,
+    lv_obj_t* l = label(body, tr("No rules: everything a device plays goes to all the others."), &lv_font_montserrat_14,
                         t.dim);
     lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(l, LV_PCT(100));
   }
-  lv_obj_t* add = button(body, LV_SYMBOL_PLUS "  Add a rule", addTapped);
+  lv_obj_t* add = button(body, tr(LV_SYMBOL_PLUS "  Add a rule"), addTapped);
   lv_obj_add_state(add, LV_STATE_CHECKED);
   lv_obj_t* l = label(body,
-                      "The first rule that matches a message decides. They're kept in " MAP_FILE
-                      " on the SD card, which explains everything they can do.",
+                      tr("The first rule that matches a message decides. They're kept in " MAP_FILE
+                      " on the SD card, which explains everything they can do."),
                       &lv_font_montserrat_12, t.dim);
   lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(l, LV_PCT(100));
@@ -254,13 +255,13 @@ static void pick(lv_obj_t* body, const char* name, const std::string& opts, int*
 static void saveTapped(lv_event_t*) {
   std::string line = midimap::text(drafted());
   if (line.size() >= 2 && !line.compare(line.size() - 2, 2, "->")) {
-    toast("Choose where it goes, or what changes.", true);
+    toast(tr("Choose where it goes, or what changes."), true);
     return;
   }
   MapRule check;
   const char* why;
   if (!midimap::parse(line.c_str(), check, &why)) {
-    toast(why ? why : "That isn't a rule.", true);
+    toast(why ? why : tr("That isn't a rule."), true);
     return;
   }
   std::string p = catalog::path(MAP_FILE);
@@ -268,23 +269,23 @@ static void saveTapped(lv_event_t*) {
   if (probe) {
     fclose(probe);
   } else if (p.empty() || !midimap::writeHelp(p.c_str())) {
-    toast("Can't write " MAP_FILE ".", true);
+    toast(tr("Can't write " MAP_FILE "."), true);
     return;
   }
   FILE* f = fopen(p.c_str(), "a");
   bool ok = f && fprintf(f, "%s\n", line.c_str()) >= 0;
   ok = f && !fclose(f) && ok;
   if (!ok) {
-    toast("Can't write " MAP_FILE ".", true);
+    toast(tr("Can't write " MAP_FILE "."), true);
     return;
   }
-  reloaded("Added.");
+  reloaded(tr("Added."));
   go(mapPage);
 }
 
 void ui::mapAddPage(lv_obj_t* page) {
   const Theme& t = theme();
-  header(page, "Add a rule", mapPage);
+  header(page, tr("Add a rule"), mapPage);
   lv_obj_t* body = addBody = scroller(page);
   lv_obj_set_style_pad_row(body, 2, 0);
 
@@ -312,40 +313,40 @@ void ui::mapAddPage(lv_obj_t* page) {
     draft.to = 0;
   }
 
-  label(body, "When", &lv_font_montserrat_12, t.accent);
-  pick(body, "From", "Any device" + devs, &draft.from);
-  pick(body, "Channel", "Any" + chans, &draft.fromCh);
+  label(body, tr("When"), &lv_font_montserrat_12, t.accent);
+  pick(body, tr("From"), tr("Any device") + devs, &draft.from);
+  pick(body, tr("Channel"), tr("Any") + chans, &draft.fromCh);
   std::string whats;
   for (const char* w : WHATS) {
-    whats += (whats.empty() ? "" : "\n") + std::string(w);
+    whats += (whats.empty() ? "" : "\n") + std::string(tr(w));
   }
-  pick(body, "Plays", whats, &draft.what);
+  pick(body, tr("Plays"), whats, &draft.what);
   if (draft.what == BELOW || draft.what == ABOVE) {
     std::string splits;
     for (int i = 0; i < SPLITS; i++) {
       splits += (i ? "\n" : "") + noteName(SPLIT_LOW + i);
     }
-    pick(body, "Split at", splits, &draft.split);
+    pick(body, tr("Split at"), splits, &draft.split);
   }
 
-  label(body, "Then", &lv_font_montserrat_12, t.accent);
-  pick(body, "To", "The others" + toDevs + "\nNowhere (drop)", &draft.to);
+  label(body, tr("Then"), &lv_font_montserrat_12, t.accent);
+  pick(body, "To", tr("The others") + toDevs + tr("\nNowhere (drop)"), &draft.to);
   if (draft.to != toCount + 1) {
-    pick(body, "Channel", "The same" + chans, &draft.toCh);
+    pick(body, tr("Channel"), tr("The same") + chans, &draft.toCh);
     bool notes = draft.what <= ABOVE;
     if (notes) {
-      std::string tr;
+      std::string steps;
       for (int i = -TRANSPOSE; i <= TRANSPOSE; i++) {
-        tr += (tr.empty() ? "" : "\n") + (i > 0 ? "+" + std::to_string(i) : std::to_string(i)) +
-              (i % 12 || !i ? "" : i > 0 ? " (octave up)"
-                                         : " (octave down)");
+        steps += (steps.empty() ? "" : "\n") + (i > 0 ? "+" + std::to_string(i) : std::to_string(i)) +
+              (i % 12 || !i ? "" : i > 0 ? tr(" (octave up)")
+                                         : tr(" (octave down)"));
       }
-      pick(body, "Transpose", tr, &draft.transpose);
+      pick(body, tr("Transpose"), steps, &draft.transpose);
       std::string vels;
       for (const char* v : VELS) {
-        vels += (vels.empty() ? "" : "\n") + std::string(v);
+        vels += (vels.empty() ? "" : "\n") + std::string(tr(v));
       }
-      pick(body, "Velocity", vels, &draft.vel);
+      pick(body, tr("Velocity"), vels, &draft.vel);
     }
   }
 
@@ -354,10 +355,10 @@ void ui::mapAddPage(lv_obj_t* page) {
   lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(l, LV_PCT(100));
   lv_obj_set_style_pad_top(l, 6, 0);
-  lv_obj_t* f = label(body, ("In " MAP_FILE ": " + midimap::text(r)).c_str(), &lv_font_montserrat_12, t.dim);
+  lv_obj_t* f = label(body, (tr("In " MAP_FILE ": ") + midimap::text(r)).c_str(), &lv_font_montserrat_12, t.dim);
   lv_label_set_long_mode(f, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(f, LV_PCT(100));
-  lv_obj_t* b = button(body, LV_SYMBOL_OK "  Add it", saveTapped);
+  lv_obj_t* b = button(body, tr(LV_SYMBOL_OK "  Add it"), saveTapped);
   lv_obj_add_state(b, LV_STATE_CHECKED);
   if (keepScroll) {
     lv_obj_update_layout(body);

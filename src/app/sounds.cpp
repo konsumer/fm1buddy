@@ -18,6 +18,7 @@
 #include "midi.h"
 #include "sloop.h"
 #include "songmidi.h"
+#include "i18n.h"
 
 static void wait(uint32_t ms) {
   std::this_thread::sleep_for(std::chrono::milliseconds(ms));
@@ -102,15 +103,15 @@ sounds::Info sounds::describe(const std::vector<uint8_t>& data) {
   }
   char s[48];
   if (ms.empty()) {
-    snprintf(s, sizeof s, "No SysEx in it");
+    snprintf(s, sizeof s, "%s", tr("No SysEx in it"));
   } else if (banks + voices < (int)ms.size()) {
-    snprintf(s, sizeof s, "%d SysEx message%s", (int)ms.size(), ms.size() == 1 ? "" : "s");
+    snprintf(s, sizeof s, tr("%d SysEx message%s"), (int)ms.size(), ms.size() == 1 ? "" : "s");
   } else if (banks == 1 && !voices) {
-    snprintf(s, sizeof s, "DX7 bank: 32 voices");
+    snprintf(s, sizeof s, "%s", tr("DX7 bank: 32 voices"));
   } else if (voices == 1 && !banks) {
-    snprintf(s, sizeof s, "DX7 voice");
+    snprintf(s, sizeof s, "%s", tr("DX7 voice"));
   } else {
-    snprintf(s, sizeof s, "DX7: %d voices", (int)info.names.size());
+    snprintf(s, sizeof s, tr("DX7: %d voices"), (int)info.names.size());
   }
   info.kind = s;
   return info;
@@ -227,7 +228,7 @@ const char* sounds::readVoice(int d, std::vector<uint8_t>& syx) {
       },
       reply);
   if (!got) {
-    return "It didn't send its voice.";
+    return tr("It didn't send its voice.");
   }
   // a DX7 single voice: F0 43 00 00 01 1B, the 155 bytes, the sum, F7
   syx = {0xF0, 0x43, 0x00, 0x00, 0x01, 0x1B};
@@ -348,10 +349,10 @@ static bool shareInfo(int d, sounds::Speaks& out, int tries) {
 static const char* readBlock(int d, uint8_t k, std::vector<uint8_t>& data, void (*progress)(uint32_t, uint32_t)) {
   BlockInfo i;
   if (!blockInfo(d, k, i, 3)) {
-    return "It didn't answer.";
+    return tr("It didn't answer.");
   }
   if (i.size > SHARE_FILE_MAX) {
-    return "It has more than this can keep.";
+    return tr("It has more than this can keep.");
   }
   data.assign(i.size, 0);
   uint8_t q[6], r[6 + SHARE_CHUNK];
@@ -363,7 +364,7 @@ static const char* readBlock(int d, uint8_t k, std::vector<uint8_t>& data, void 
       return n == 6 + want && rd32(r) == off && rd16(r + 4) == want;
     });
     if (n < 0) {
-      return "It stopped answering.";
+      return tr("It stopped answering.");
     }
     memcpy(data.data() + off, r + 6, want);
     if (progress) {
@@ -376,25 +377,25 @@ static const char* readBlock(int d, uint8_t k, std::vector<uint8_t>& data, void 
 static const char* shareError(int status) {
   switch (status) {
     case SHARE_BUSY:
-      return "It's playing: stop it, then load again.";
+      return tr("It's playing: stop it, then load again.");
     case SHARE_BAD:
-      return "It didn't take it: it isn't something this version knows.";
+      return tr("It didn't take it: it isn't something this version knows.");
     case SHARE_INCOMPLETE:
-      return "Not all of it got there: try again.";
+      return tr("Not all of it got there: try again.");
     case SHARE_FAILED:
-      return "It took it, but couldn't save it.";
+      return tr("It took it, but couldn't save it.");
   }
-  return "It said no.";
+  return tr("It said no.");
 }
 
 // block k to device d (which keeps it); 0 or an error
 static const char* writeBlock(int d, uint8_t k, const std::vector<uint8_t>& data, void (*progress)(uint32_t, uint32_t)) {
   BlockInfo i;
   if (!blockInfo(d, k, i, 3)) {
-    return "It didn't answer.";
+    return tr("It didn't answer.");
   }
   if (data.size() > i.max) {
-    return k == KITS ? "The kits are too big for it: shorter samples, or fewer." : "It's too big for it.";
+    return k == KITS ? tr("The kits are too big for it: shorter samples, or fewer.") : tr("It's too big for it.");
   }
   uint8_t q[8 + SHARE_CHUNK], r[16];
   for (uint32_t off = 0; off < data.size(); off += SHARE_CHUNK) {
@@ -404,7 +405,7 @@ static const char* writeBlock(int d, uint8_t k, const std::vector<uint8_t>& data
     memcpy(q + 8, data.data() + off, n);
     if (shareAsk(d, SHARE_WRITE, k, q, 8 + n, r, sizeof r, 3, 1000,
                  [&](const uint8_t* r, uint32_t len) { return len == 5 && rd32(r) == off; }) < 0) {
-      return "It stopped answering.";
+      return tr("It stopped answering.");
     }
     if (r[4] != SHARE_OK) {
       return shareError(r[4]);
@@ -417,7 +418,7 @@ static const char* writeBlock(int d, uint8_t k, const std::vector<uint8_t>& data
   wr32(q, data.size());
   wr16(q + 4, crc16(data.data(), data.size()));
   if (shareAsk(d, SHARE_DONE, k, q, 6, r, sizeof r, 3, 5000, [](const uint8_t*, uint32_t n) { return n == 1; }) < 0) {
-    return "It didn't say if it took it.";
+    return tr("It didn't say if it took it.");
   }
   return r[0] == SHARE_OK ? 0 : shareError(r[0]);
 }
@@ -509,7 +510,7 @@ sounds::Setup sounds::setup(const std::string& name, const char* app) {
 const char* sounds::keep(int d, std::string& setup, void (*progress)(uint32_t, uint32_t), int* step) {
   Speaks s = {};
   if (!shareInfo(d, s, 3)) {
-    return "It didn't answer.";
+    return tr("It didn't answer.");
   }
   std::vector<uint8_t> song, bank;
   if (step) {
@@ -529,7 +530,7 @@ const char* sounds::keep(int d, std::string& setup, void (*progress)(uint32_t, u
   }
   std::string dir = catalog::path(SETUPS_DIR);
   if (dir.empty()) {
-    return "No SD card.";
+    return tr("No SD card.");
   }
   mkdir(dir.c_str(), 0777);
   struct stat st;
@@ -541,7 +542,7 @@ const char* sounds::keep(int d, std::string& setup, void (*progress)(uint32_t, u
   }
   mkdir((dir + "/" + setup).c_str(), 0777);
   if (!saveFile(setupFile(setup, s.app, SONG_FILE), song) || (!bank.empty() && !saveFile(setupFile(setup, s.app, KITS_FILE), bank))) {
-    return "Can't write it to the SD card.";
+    return tr("Can't write it to the SD card.");
   }
   return 0;
 }
@@ -552,27 +553,27 @@ const char* sounds::exportSetup(const std::string& name, const char* app, std::s
   done.clear();
   if (what.song) {
     if (!loadFile(setupFile(name, app, SONG_FILE), data)) {
-      return "Can't read its song from the SD card.";
+      return tr("Can't read its song from the SD card.");
     }
     std::string dir = setupFile(name, app, SONG_FILE);
     dir = dir.substr(0, dir.find_last_of('/') + 1) + MIDI_DIR;
     int n = songmidi::write(data, dir);
     if (n < 0) {
-      return "Its song isn't one this knows, or the SD card didn't take the files.";
+      return tr("Its song isn't one this knows, or the SD card didn't take the files.");
     }
-    done = std::to_string(n) + (n == 1 ? " pattern" : " patterns") + " as MIDI files in " MIDI_DIR "/";
+    done = std::to_string(n) + (n == 1 ? tr(" pattern") : tr(" patterns")) + tr(" as MIDI files in " MIDI_DIR "/");
   }
   if (!what.kits.empty() && !what.wavs) {
     if (!loadFile(setupFile(name, app, KITS_FILE), data)) {
-      return "Can't read its kits from the SD card.";
+      return tr("Can't read its kits from the SD card.");
     }
     if (const char* e = kits::unpack(data, setupFile(name, app, KITS_FOLDER))) {
       return e;
     }
-    done += std::string(done.empty() ? "" : ", and ") + "its kits as .wav files in " KITS_DIR "/";
+    done += std::string(done.empty() ? "" : tr(", and ")) + tr("its kits as .wav files in " KITS_DIR "/");
   }
   if (done.empty()) {
-    done = "Nothing to export (its kits are .wav files already)";
+    done = tr("Nothing to export (its kits are .wav files already)");
   }
   return 0;
 }
@@ -580,11 +581,11 @@ const char* sounds::exportSetup(const std::string& name, const char* app, std::s
 const char* sounds::restore(int d, const std::string& name, void (*progress)(uint32_t, uint32_t), int* step) {
   Speaks s = {};
   if (!shareInfo(d, s, 3)) {
-    return "It didn't answer.";
+    return tr("It didn't answer.");
   }
   Setup what = setup(name, s.app);
   if (!what.song && what.kits.empty()) {
-    return "This setup has nothing for the firmware it has now.";
+    return tr("This setup has nothing for the firmware it has now.");
   }
   // its kits first: made from kits/, else as they were kept
   std::vector<uint8_t> bank;
@@ -596,7 +597,7 @@ const char* sounds::restore(int d, const std::string& name, void (*progress)(uin
       return e;
     }
   } else if (!what.kits.empty() && !loadFile(setupFile(name, s.app, KITS_FILE), bank)) {
-    return "Can't read its kits from the SD card.";
+    return tr("Can't read its kits from the SD card.");
   }
   if (!bank.empty()) {
     if (step) {
@@ -609,7 +610,7 @@ const char* sounds::restore(int d, const std::string& name, void (*progress)(uin
   if (what.song) {
     std::vector<uint8_t> song;
     if (!loadFile(setupFile(name, s.app, SONG_FILE), song)) {
-      return "Can't read its song from the SD card.";
+      return tr("Can't read its song from the SD card.");
     }
     if (step) {
       *step = 2;
@@ -677,11 +678,11 @@ static const uint8_t UPGRADE[] = {0xF0, 0x22, 0x24, 0x35, 0x7F, 0xF7};
 const char* sounds::send(int d, const std::vector<uint8_t>& data, void (*progress)(uint32_t, uint32_t)) {
   auto ms = messages(data);
   if (ms.empty()) {
-    return "There's no SysEx in it.";
+    return tr("There's no SysEx in it.");
   }
   for (auto& [at, n] : ms) {
     if (n == sizeof UPGRADE && !memcmp(data.data() + at, UPGRADE, n)) {
-      return "It has the FM-1's update command in it: not sent.";
+      return tr("It has the FM-1's update command in it: not sent.");
     }
   }
   const char* err = 0;  // (routing is off meanwhile: jobs.cpp)
@@ -689,7 +690,7 @@ const char* sounds::send(int d, const std::vector<uint8_t>& data, void (*progres
   for (auto& [at, n] : ms) {
     for (uint32_t i = 0; i < n && !err; i += 256) {
       if (!midi::sendWait(d, data.data() + at + i, std::min<uint32_t>(256, n - i), 2000)) {
-        err = "It stopped taking MIDI (or went).";
+        err = tr("It stopped taking MIDI (or went).");
       }
     }
     if (err) {

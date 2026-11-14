@@ -11,6 +11,7 @@
 
 #include "catalog.h"
 #include "hal.h"
+#include "i18n.h"
 
 #define CHUNK (32 * 1024)  // written at a time
 
@@ -54,7 +55,7 @@ static void writer(void*) {
       if (fwrite(buf, 1, n, out) != n) {
         ok = false;
         std::lock_guard<std::mutex> g(lock);
-        why = "The SD card didn't take it (is it full?): the take ends there.";
+        why = tr("The SD card didn't take it (is it full?): the take ends there.");
         going = false;
       } else {
         written += n;
@@ -84,17 +85,17 @@ static void writer(void*) {
 
 bool record::start(std::string& err) {
   if (going || writing) {
-    err = "It's still finishing the last take.";
+    err = tr("It's still finishing the last take.");
     return false;
   }
   hal::AudioIn a;
   if (!hal::audioIn(a)) {
-    err = "No USB audio on the hub.";
+    err = tr("No USB audio on the hub.");
     return false;
   }
   std::string dir = catalog::path(REC_DIR);
   if (dir.empty()) {
-    err = "No SD card.";
+    err = tr("No SD card.");
     return false;
   }
   mkdir(dir.c_str(), 0777);
@@ -106,7 +107,7 @@ bool record::start(std::string& err) {
   std::string file = "take-" + std::to_string(n) + ".wav";
   out = fopen((dir + "/" + file).c_str(), "wb");
   if (!out) {
-    err = "Can't make " REC_DIR "/" + file + ".";
+    err = tr("Can't make " REC_DIR "/") + file + ".";
     return false;
   }
   rate = a.rate;

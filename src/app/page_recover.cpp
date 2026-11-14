@@ -14,6 +14,7 @@
 #include "jobs.h"
 #include "uboot.h"
 #include "ui_priv.h"
+#include "i18n.h"
 
 using namespace ui;
 
@@ -78,10 +79,10 @@ void ui::recoverPage(lv_obj_t* page) {
       name = catalog::sd.str(f.name);
     }
   }
-  header(page, devText(LV_SYMBOL_WARNING "  Recovering the FM-1").c_str());
+  header(page, devText(tr(LV_SYMBOL_WARNING "  Recovering the FM-1")).c_str());
   lv_obj_t* body = scroller(page);
   lv_obj_set_style_pad_row(body, 6, 0);
-  wrapped(body, ("Putting " + name + " on it.").c_str(), &lv_font_montserrat_12, t.dim);
+  wrapped(body, (tr("Putting ") + name + tr(" on it.")).c_str(), &lv_font_montserrat_12, t.dim);
   // its flash, as it's read, written and checked: the map on the left, what's going on beside it
   int st = jobs::step;
   bool onFlash = st == jobs::READING_FLASH || st == jobs::SAVING || st == jobs::WRITING_FLASH ||
@@ -106,25 +107,25 @@ void ui::recoverPage(lv_obj_t* page) {
     status = wrapped(text, devText(jobs::status()).c_str(), big, t.accent);
     if (waiting && hal::keyState() < hal::KEY_ANSWERED) {
       wrapped(text,
-              "It has to start from no power at all: only then does its chip listen. Plug it straight into fm1buddy's "
-              "USB-C adapter (no hub).",
+              tr("It has to start from no power at all: only then does its chip listen. Plug it straight into fm1buddy's "
+              "USB-C adapter (no hub)."),
               &lv_font_montserrat_12, t.dim);
     } else if (!waiting && !showMap) {  // (with the map: its status says so)
-      wrapped(text, "Leave it plugged in and on.", &lv_font_montserrat_14, t.text);
+      wrapped(text, tr("Leave it plugged in and on."), &lv_font_montserrat_14, t.text);
     }
   } else if (mine && jobs::ok) {
     status = 0;
-    wrapped(text, jobs::error.empty() ? devText("Done: it's on the FM-1.").c_str() : devText(jobs::error).c_str(), &lv_font_montserrat_16,
+    wrapped(text, jobs::error.empty() ? devText(tr("Done: it's on the FM-1.")).c_str() : devText(jobs::error).c_str(), &lv_font_montserrat_16,
             t.accent);
-    wrapped(text, devText("Switch the FM-1 off and on: it starts what was written. Then plug the hub back in, and tap Done.").c_str(),
+    wrapped(text, devText(tr("Switch the FM-1 off and on: it starts what was written. Then plug the hub back in, and tap Done.")).c_str(),
             &lv_font_montserrat_14, t.text);
   } else {
     status = 0;
-    wrapped(text, mine ? devText(jobs::error).c_str() : "Busy: try again.", &lv_font_montserrat_14, t.knob[0]);
+    wrapped(text, mine ? devText(jobs::error).c_str() : tr("Busy: try again."), &lv_font_montserrat_14, t.knob[0]);
   }
   if (!jobs::saved.empty() && mine) {
     // (beside the map: under its key)
-    wrapped(showMap ? lv_obj_get_parent(text) : text, ("Its flash as it was: " BACKUPS_DIR "/" + jobs::saved + ".").c_str(),
+    wrapped(showMap ? lv_obj_get_parent(text) : text, (tr("Its flash as it was: " BACKUPS_DIR "/") + jobs::saved + ".").c_str(),
             &lv_font_montserrat_12, t.dim);
   }
   lv_obj_t* row = box(text, LV_FLEX_FLOW_ROW_WRAP);
@@ -134,18 +135,18 @@ void ui::recoverPage(lv_obj_t* page) {
   if (jobs::running) {
     // only while nothing is going on it yet (and not at all beside the map: it's going on)
     if (!showMap) {
-      cancelBtn = button(row, LV_SYMBOL_CLOSE " Cancel", doneTapped);
+      cancelBtn = button(row, tr(LV_SYMBOL_CLOSE " Cancel"), doneTapped);
       if (!waiting) {
         lv_obj_add_state(cancelBtn, LV_STATE_DISABLED);
       }
     }
   } else {
     if (mine && !jobs::ok && jobs::calLost) {
-      button(row, LV_SYMBOL_WARNING " It's an SMK-37", giveCalTapped);
+      button(row, tr(LV_SYMBOL_WARNING " It's an SMK-37"), giveCalTapped);
     } else if (!(mine && jobs::ok)) {
-      button(row, LV_SYMBOL_REFRESH " Try again", againTapped);
+      button(row, tr(LV_SYMBOL_REFRESH " Try again"), againTapped);
     }
-    button(row, LV_SYMBOL_OK " Done", doneTapped);
+    button(row, tr(LV_SYMBOL_OK " Done"), doneTapped);
   }
   tick = recoverTick;
 }
@@ -212,7 +213,7 @@ static void chooseTapped(lv_event_t* e) {
 
 static void startTapped(lv_event_t*) {
   if (!jobs::prepare(chosen)) {
-    toast("Busy: try again in a moment.", true);
+    toast(tr("Busy: try again in a moment."), true);
   }
   go(recoverStartPage);
 }
@@ -234,16 +235,16 @@ static void startTick() {
 
 void ui::recoverStartPage(lv_obj_t* page) {
   const Theme& t = theme();
-  header(page, devText("Unbrick the FM-1").c_str(), soundsPage);
+  header(page, devText(tr("Unbrick the FM-1")).c_str(), soundsPage);
   lv_obj_t* body = scroller(page);
   lv_obj_set_style_pad_row(body, 4, 0);
   wrapped(body,
-          devText("For an FM-1 that won't start (a blank or stuck screen, a failed install): a firmware or a backup goes "
-                  "back on it. To update a working one, use Firmware.")
+          devText(tr("For an FM-1 that won't start (a blank or stuck screen, a failed install): a firmware or a backup goes "
+                  "back on it. To update a working one, use Firmware."))
               .c_str(),
           &lv_font_montserrat_12, t.dim);
 
-  label(body, "Put back on it", &lv_font_montserrat_14, t.text);
+  label(body, tr("Put back on it"), &lv_font_montserrat_14, t.text);
   choices.clear();
   for (const FwItem& f : catalog::sd.items) {
     const char *product = catalog::sd.str(f.product), *version = catalog::sd.str(f.version);
@@ -274,16 +275,16 @@ void ui::recoverStartPage(lv_obj_t* page) {
   }
   if (choices.empty()) {
     wrapped(body,
-            hal::sd() ? "Nothing on the SD card: download a firmware (stock V15 is on the Hub) or make a backup first."
-                      : "No SD card.",
+            hal::sd() ? tr("Nothing on the SD card: download a firmware (stock V15 is on the Hub) or make a backup first.")
+                      : tr("No SD card."),
             &lv_font_montserrat_12, t.knob[0]);
   }
   lv_obj_t* row = box(body, LV_FLEX_FLOW_ROW);
   lv_obj_set_style_pad_top(row, 6, 0);
-  startBtn = button(row, LV_SYMBOL_PLAY " Start", startTapped);
+  startBtn = button(row, tr(LV_SYMBOL_PLAY " Start"), startTapped);
   showChosen();
   prepStatus = label(body, jobs::running ? devText(jobs::status()).c_str() : "", &lv_font_montserrat_14, t.accent);
-  wrapped(body, "fm1buddy restarts for it, then shows what to do, step by step.", &lv_font_montserrat_12, t.dim);
+  wrapped(body, tr("fm1buddy restarts for it, then shows what to do, step by step."), &lv_font_montserrat_12, t.dim);
   tick = startTick;
   jobDone = prepared;
 }

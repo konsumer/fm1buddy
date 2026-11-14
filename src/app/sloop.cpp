@@ -17,6 +17,7 @@
 #include "hal.h"
 #include "midi.h"
 #include "sloopfmt.h"
+#include "i18n.h"
 
 using namespace sloopfmt;
 
@@ -75,15 +76,15 @@ static bool request(int d, uint8_t cmd, const std::vector<uint8_t>& args, std::v
 static const char* rcText(int rc) {
   switch (rc) {
     case 2:
-      return "The FM-1 says that isn't a valid SLOOP object.";
+      return tr("The FM-1 says that isn't a valid SLOOP object.");
     case 3:
-      return "Stop the song on the FM-1 first.";
+      return tr("Stop the song on the FM-1 first.");
     case 4:
-      return "The FM-1's flash didn't take it.";
+      return tr("The FM-1's flash didn't take it.");
     case 5:
-      return "The FM-1 lost track of it: try again.";
+      return tr("The FM-1 lost track of it: try again.");
   }
-  return "The FM-1 didn't take it.";
+  return tr("The FM-1 didn't take it.");
 }
 
 // ---------------------------------------------------------------------------------------------- INFO ---
@@ -134,7 +135,7 @@ bool sloop::parseInfo(const uint8_t* a, uint32_t n, Info& out) {
 const char* sloop::info(int d, Info& out) {
   std::vector<uint8_t> r;
   if (!request(d, INFO, {}, r, 1000, 2) || !parseInfo(r.data(), (uint32_t)r.size(), out)) {
-    return "The FM-1 didn't answer (is it running SLOOP?).";
+    return tr("The FM-1 didn't answer (is it running SLOOP?).");
   }
   return 0;
 }
@@ -143,7 +144,7 @@ const char* sloop::slots(int d, std::vector<Slot>& out) {
   out.clear();
   std::vector<uint8_t> r;
   if (!request(d, SMP_INFO, {}, r) || r.size() < 2) {
-    return "The FM-1 didn't say what's in its sample slots.";
+    return tr("The FM-1 didn't say what's in its sample slots.");
   }
   size_t i = 2;
   for (int k = 0; k < r[0] && i < r.size(); k++) {
@@ -170,15 +171,15 @@ const sloop::Object* sloop::Backup::get(int id) const {
 }
 
 std::string sloop::objectName(int id) {
-  static const char* NAMES[] = {"working project", "settings", "project A", "project B", "project C", "project D",
-                                "presets 1-16", "presets 17-32", "FM6 patches", "drum kits", "MIDI map", "theme"};
+  const char* NAMES[] = {tr("working project"), tr("settings"), tr("project A"), tr("project B"), tr("project C"), tr("project D"),
+                                "presets 1-16", "presets 17-32", tr("FM6 patches"), tr("drum kits"), tr("MIDI map"), tr("theme")};
   if (id >= 0 && id < 12) {
     return NAMES[id];
   }
   if (id >= 32 && id < 36) {
-    return "sample slot USR" + std::to_string(id - 31);
+    return tr("sample slot USR") + std::to_string(id - 31);
   }
-  return "object " + std::to_string(id);
+  return tr("object ") + std::to_string(id);
 }
 
 static std::vector<std::string> listDir(const std::string& dir, bool (*want)(const std::string&, bool)) {
@@ -255,7 +256,7 @@ static bool readObjects(JsonArray a, bool (*known)(int), std::vector<sloop::Obje
     uint32_t len = o["len"] | 0u, crc = o["crc"] | 0u;
     if (!known(obj.id) || !unbase64(o["data"] | "", obj.data) || obj.data.size() != len ||
         crc32(obj.data.data(), obj.data.size()) != crc) {
-      why = "It's damaged: " + sloop::objectName(obj.id) + " doesn't match its CRC.";
+      why = tr("It's damaged: ") + sloop::objectName(obj.id) + tr(" doesn't match its CRC.");
       return false;
     }
     out.push_back(std::move(obj));
@@ -267,16 +268,16 @@ bool sloop::read(const std::string& name, Backup& out, std::string& why) {
   out = Backup();
   std::vector<char> text;
   if (!loadFile(catalog::path(std::string(SLOOP_DIR "/") + name), text)) {
-    why = "Can't read it from the SD card.";
+    why = tr("Can't read it from the SD card.");
     return false;
   }
   JsonDocument doc;
   if (deserializeJson(doc, text.data())) {  // (in place: its strings stay in text)
-    why = "It isn't a SLOOP backup (not JSON).";
+    why = tr("It isn't a SLOOP backup (not JSON).");
     return false;
   }
   if (strcmp(doc["format"] | "", "sloop-backup") || (doc["version"] | 0) < 1 || !doc["objects"].is<JsonArray>()) {
-    why = "It isn't a SLOOP backup.";
+    why = tr("It isn't a SLOOP backup.");
     return false;
   }
   out.firmware = doc["firmware"] | "";
@@ -286,7 +287,7 @@ bool sloop::read(const std::string& name, Backup& out, std::string& why) {
     return false;
   }
   if (!out.get(0) || !out.get(1)) {
-    why = "It's incomplete (no working project or settings).";
+    why = tr("It's incomplete (no working project or settings).");
     return false;
   }
   return true;
@@ -304,16 +305,16 @@ bool sloop::readSong(const std::string& name, Song& out, std::string& why) {
   out = Song();
   std::vector<char> text;
   if (!loadFile(catalog::path(std::string(SLOOP_SONGS_DIR "/") + name), text)) {
-    why = "Can't read it from the SD card.";
+    why = tr("Can't read it from the SD card.");
     return false;
   }
   JsonDocument doc;
   if (deserializeJson(doc, text.data())) {
-    why = "It isn't a SLOOP song (not JSON).";
+    why = tr("It isn't a SLOOP song (not JSON).");
     return false;
   }
   if (strcmp(doc["format"] | "", "sloop-song") || (doc["version"] | 0) < 1 || !doc["objects"].is<JsonArray>()) {
-    why = "It isn't a SLOOP song.";
+    why = tr("It isn't a SLOOP song.");
     return false;
   }
   out.name = doc["name"] | "";
@@ -324,11 +325,11 @@ bool sloop::readSong(const std::string& name, Song& out, std::string& why) {
     return false;
   }
   if (!out.get(0)) {
-    why = "It's incomplete (no loop).";
+    why = tr("It's incomplete (no loop).");
     return false;
   }
   if (doc["order"].is<const char*>() && (!unbase64(doc["order"] | "", out.order) || out.order.size() != ORDER_LEN)) {
-    why = "It's damaged: its order isn't right.";
+    why = tr("It's damaged: its order isn't right.");
     return false;
   }
   return true;
@@ -341,8 +342,8 @@ std::string sloop::songSummary(const Song& s) {
       sections += std::string(sections.empty() ? "" : " ") + (char)('A' + o.id - 2);
     }
   }
-  std::string out = sections.empty() ? "the loop, no sections" : "the loop, sections " + sections;
-  return out + (s.order.empty() ? "" : ", and their order");
+  std::string out = sections.empty() ? tr("the loop, no sections") : tr("the loop, sections ") + sections;
+  return out + (s.order.empty() ? "" : tr(", and their order"));
 }
 
 std::string sloop::summary(const Backup& b) {
@@ -354,9 +355,9 @@ std::string sloop::summary(const Backup& b) {
     }
     samples += o.id >= 32 && !o.data.empty();
   }
-  s = projects.empty() ? "no projects" : "projects " + projects;
+  s = projects.empty() ? tr("no projects") : tr("projects ") + projects;
   if (b.get(6) || b.get(7)) {
-    s += ", presets";
+    s += tr(", presets");
   }
   if (samples) {
     s += ", " + std::to_string(samples) + " sample slot" + (samples == 1 ? "" : "s");
@@ -431,7 +432,7 @@ static const char* list(int d, std::vector<Item>& items) {
   std::vector<uint8_t> r;
   items.clear();
   if (!request(d, BK_LIST, {}, r, 5000, 1) || r.size() < 2) {
-    return "The FM-1 didn't list what it has.";
+    return tr("The FM-1 didn't list what it has.");
   }
   if (r[0]) {
     return rcText(r[0]);
@@ -454,14 +455,14 @@ static const char* get(int d, const Item& it, sloop::Object& o, uint32_t& done, 
     args.push_back((uint8_t)(n & 0x7F));
     args.push_back((uint8_t)(n >> 7));
     if (!request(d, BK_GET, args, r, 1500, 3) || r.size() < 9 || r[0] != it.id) {
-      return "The FM-1 stopped answering: keep it plugged in and try again.";
+      return tr("The FM-1 stopped answering: keep it plugged in and try again.");
     }
     if (r[1]) {
-      return r[1] == 5 ? "The FM-1 changed while it was read: try again." : "The FM-1 didn't give it.";
+      return r[1] == 5 ? tr("The FM-1 changed while it was read: try again.") : tr("The FM-1 didn't give it.");
     }
     std::vector<uint8_t> data = unpack7(r.data() + 9, r.size() - 9);
     if (data.size() < n) {
-      return "The FM-1 gave less than it said.";
+      return tr("The FM-1 gave less than it said.");
     }
     o.data.insert(o.data.end(), data.begin(), data.begin() + n);
     done += n;
@@ -470,7 +471,7 @@ static const char* get(int d, const Item& it, sloop::Object& o, uint32_t& done, 
     }
   }
   if (crc32(o.data.data(), o.data.size()) != it.crc) {
-    return "What came doesn't match its CRC: try again.";
+    return tr("What came doesn't match its CRC: try again.");
   }
   return 0;
 }
@@ -478,7 +479,7 @@ static const char* get(int d, const Item& it, sloop::Object& o, uint32_t& done, 
 // --------------------------------------------------------------------------------------------- backup ---
 const char* sloop::backup(int d, const Info& info, std::string& saved, Progress p, const char* prefix) {
   if (info.proto < 6) {
-    return "Backups need SLOOP 2.3 or later.";
+    return tr("Backups need SLOOP 2.3 or later.");
   }
   std::vector<Item> items;
   if (const char* e = list(d, items)) {
@@ -501,7 +502,7 @@ const char* sloop::backup(int d, const Info& info, std::string& saved, Progress 
   std::string head = "\"format\": \"sloop-backup\", \"version\": 1, \"firmware\": " + jsonString(b.firmware) +
                      ", \"date\": " + jsonString(b.date) + ", ";
   if (!writeFile(SLOOP_DIR, prefix, ".json", head, b.objects, saved)) {
-    return "Can't write it to the SD card.";
+    return tr("Can't write it to the SD card.");
   }
   hal::log("sloop: %s: %u objects, %u bytes", saved.c_str(), (unsigned)b.objects.size(), (unsigned)total);
   return 0;
@@ -526,7 +527,7 @@ static const char* put(int d, int id, const std::vector<uint8_t>& data, uint32_t
   u35((uint32_t)data.size(), args);
   u35(crc32(data.data(), data.size()), args);
   if (!request(d, BK_PUT, args, r, 1500, 2) || r.size() < 3) {
-    return "The FM-1 stopped answering.";
+    return tr("The FM-1 stopped answering.");
   }
   if ((r[2] == 1 || r[2] == 5) && id >= 8 && id <= 11 && skipped) {
     *skipped = true;  // an older SLOOP without it (FM6 bank, drum kits, MIDI map, theme)
@@ -541,7 +542,7 @@ static const char* put(int d, int id, const std::vector<uint8_t>& data, uint32_t
     u35((uint32_t)off, args);
     pack7(data.data() + off, n, args);
     if (!request(d, BK_PUT, args, r, 1500, 2) || r.size() < 3) {
-      return "The FM-1 stopped answering.";
+      return tr("The FM-1 stopped answering.");
     }
     if (r[2]) {
       return rcText(r[2]);
@@ -552,7 +553,7 @@ static const char* put(int d, int id, const std::vector<uint8_t>& data, uint32_t
     }
   }
   if (!request(d, BK_PUT, {2, (uint8_t)id}, r, 5000, 1) || r.size() < 3) {
-    return "The FM-1 stopped answering.";
+    return tr("The FM-1 stopped answering.");
   }
   return r[2] ? rcText(r[2]) : 0;
 }
@@ -563,28 +564,28 @@ static const char* putSlot(int d, int k, const std::vector<uint8_t>& obj, uint32
   std::vector<uint8_t> r;
   if (obj.empty()) {
     if (!request(d, SMP_ERASE, {(uint8_t)k}, r, 2500, 1) || r.size() < 2) {
-      return "The FM-1 stopped answering.";
+      return tr("The FM-1 stopped answering.");
     }
-    return r[1] ? "The FM-1 didn't erase the sample slot." : 0;
+    return r[1] ? tr("The FM-1 didn't erase the sample slot.") : 0;
   }
   if (obj.size() < SLOT_DATA_OFF) {
-    return "A sample slot in it is too short.";
+    return tr("A sample slot in it is too short.");
   }
   if (!request(d, SMP_BEGIN, {(uint8_t)k}, r, 1000, 1) || r.size() < 2) {
-    return "The FM-1 stopped answering.";
+    return tr("The FM-1 stopped answering.");
   }
   if (r[1]) {
-    return "The FM-1 didn't start the sample slot.";
+    return tr("The FM-1 didn't start the sample slot.");
   }
   for (size_t off = SLOT_DATA_OFF; off < obj.size(); off += 256) {
     size_t n = obj.size() - off < 256 ? obj.size() - off : 256;
     std::vector<uint8_t> args = {(uint8_t)k, (uint8_t)(off & 0x7F), (uint8_t)(off >> 7 & 0x7F), (uint8_t)(off >> 14 & 0x7F)};
     pack7(obj.data() + off, n, args);
     if (!request(d, SMP_WRITE, args, r, 1000, 2) || r.size() < 5) {
-      return "The FM-1 stopped answering.";
+      return tr("The FM-1 stopped answering.");
     }
     if (r[4]) {
-      return "The FM-1 didn't write the sample slot.";
+      return tr("The FM-1 didn't write the sample slot.");
     }
     done += (uint32_t)n;
     if (p) {
@@ -594,12 +595,12 @@ static const char* putSlot(int d, int k, const std::vector<uint8_t>& obj, uint32
   std::vector<uint8_t> args = {(uint8_t)k};
   pack7(obj.data(), SLOT_HDR_LEN, args);
   if (!request(d, SMP_END, args, r, 2000, 1) || r.size() < 2) {
-    return "The FM-1 stopped answering.";
+    return tr("The FM-1 stopped answering.");
   }
-  static const char* END[] = {0, "its size", "its header", "its data's CRC", "the flash", "its zones"};
+  const char* END[] = {0, tr("its size"), tr("its header"), tr("its data's CRC"), tr("the flash"), tr("its zones")};
   if (r[1]) {
     static std::string why;
-    why = std::string("The FM-1 didn't take the sample slot (") + (r[1] < 6 ? END[r[1]] : "?") + ").";
+    why = std::string(tr("The FM-1 didn't take the sample slot (")) + (r[1] < 6 ? END[r[1]] : "?") + ").";
     return why.c_str();
   }
   return 0;
@@ -615,8 +616,8 @@ static const char* newer(const sloop::Backup& b, const sloop::Info& info) {
   }
   if (newest > devFormat(info)) {
     static std::string why;
-    why = "It's from a newer SLOOP (" + b.firmware + ") than the FM-1 has (" + info.version +
-          "): update its SLOOP first (Firmware).";
+    why = tr("It's from a newer SLOOP (") + b.firmware + tr(") than the FM-1 has (") + info.version +
+          tr("): update its SLOOP first (Firmware).");
     return why.c_str();
   }
   return 0;
@@ -688,14 +689,14 @@ const char* sloop::loadProject(int d, const std::string& name, int from, int to,
   }
   const Object* o = b.get(from);
   if (!o || o->data.empty() || !projFormat(o->data)) {
-    return "That project isn't in it.";
+    return tr("That project isn't in it.");
   }
   Info info;
   if (const char* e = sloop::info(d, info)) {
     return e;
   }
   if (projFormat(o->data) > devFormat(info)) {
-    w = "That project is from a newer SLOOP (" + b.firmware + "): update the FM-1's SLOOP first (Firmware).";
+    w = tr("That project is from a newer SLOOP (") + b.firmware + tr("): update the FM-1's SLOOP first (Firmware).");
     return w.c_str();
   }
   uint32_t done = 0;
@@ -716,7 +717,7 @@ static int nextNumber(const char* where, const char* prefix, const char* ext) {
 
 const char* sloop::saveSong(int d, const Info& info, std::string& saved, Progress p, const char* prefix) {
   if (info.proto < 6) {
-    return "Songs need SLOOP 2.3 or later.";
+    return tr("Songs need SLOOP 2.3 or later.");
   }
   std::vector<Item> items, want;
   if (const char* e = list(d, items)) {
@@ -746,7 +747,7 @@ const char* sloop::saveSong(int d, const Info& info, std::string& saved, Progres
     }
   }
   if (!s.get(0)) {
-    return "The FM-1 has no loop to save.";
+    return tr("The FM-1 has no loop to save.");
   }
   // its name, as SLOOP's editor shows it ("SONG 3", "BEFORE SONG 2"): the file's
   std::string name;
@@ -758,7 +759,7 @@ const char* sloop::saveSong(int d, const Info& info, std::string& saved, Progres
                      ", \"firmware\": " + jsonString(info.version) + ", \"date\": " + jsonString(isoNow()) + ", \"order\": " +
                      (order.empty() ? std::string("null") : "\"" + base64(order.data(), order.size()) + "\"") + ", ";
   if (!writeFile(SLOOP_SONGS_DIR, prefix, ".sloopsong", head, s.objects, saved)) {
-    return "Can't write it to the SD card.";
+    return tr("Can't write it to the SD card.");
   }
   hal::log("sloop: %s: %u objects, %u bytes", saved.c_str(), (unsigned)s.objects.size(), (unsigned)total);
   return 0;
@@ -777,7 +778,7 @@ const char* sloop::loadSong(int d, const std::string& name, std::string& savedFi
     return e;
   }
   if (info.proto < 6) {
-    return "Songs need SLOOP 2.3 or later.";
+    return tr("Songs need SLOOP 2.3 or later.");
   }
   if (const char* e = newer(s, info)) {
     return e;
@@ -840,7 +841,7 @@ const char* sloop::loadSamples(int d, const std::string& source, int slot, Progr
     std::sort(files.begin(), files.end());
   }
   if (files.empty()) {
-    return "No .wav files in it.";
+    return tr("No .wav files in it.");
   }
   std::vector<Zone> zones;
   for (const std::string& f : files) {
@@ -850,7 +851,7 @@ const char* sloop::loadSamples(int d, const std::string& source, int slot, Progr
     std::string why;
     std::string base = f.substr(f.rfind('/') + 1);
     if (!loadFile(f, raw) || !readWav((const uint8_t*)raw.data(), raw.size() - 1, rate, x, why) || x.empty()) {
-      w = base + ": " + (why.empty() ? "no audio" : why);
+      w = base + ": " + (why.empty() ? tr("no audio") : why);
       return w.c_str();
     }
     zones.push_back({toInt16(resample(x, rate, SLOT_RATE)), noteFromName(base.substr(0, base.size() - 4))});

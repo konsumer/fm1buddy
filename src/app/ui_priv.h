@@ -14,6 +14,8 @@
 #define PAGE_W (SCREEN_W - RAIL_W)
 #define HEAD_H 34
 #define ROW_H 44
+// a magnifying glass (FontAwesome's, in the app's fonts: fonts/)
+#define SYMBOL_SEARCH "\xEF\x80\x82"
 
 namespace ui {
 enum Tab { FIRMWARE,
@@ -39,6 +41,8 @@ void toast(const char* text, bool bad = false);
 // text about the device, for the one there: "FM-1" as a word becomes "SMK" when it's an SMK-37 (fm1::machineName).
 // Names and ids are left as they are ("FM-1_015", "ota-FM-1", "baudgirl-FM-1+VA")
 std::string devText(const std::string& text);
+// the picture is a half turn round (Settings > Flip screen: hal::flip), as kept
+bool flipped();
 // the theme changed: everything again, on the same page
 void rebuild();
 

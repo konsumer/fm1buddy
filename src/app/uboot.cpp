@@ -9,6 +9,7 @@
 #include "hal.h"
 #include "mflr_loader.h"
 #include "midi.h"
+#include "i18n.h"
 
 #define VID 0x4C4A
 #define PID 0x8057
@@ -105,7 +106,7 @@ const char* uboot::enter(int d, Chip& chip) {
   for (int o = 0; o < MIDI_USB; o++) {
     midi::Dev v;
     if (o != d && midi::dev(o, v)) {
-      return "Unplug the other USB devices first: the FM-1 has to be alone on the hub.";
+      return tr("Unplug the other USB devices first: the FM-1 has to be alone on the hub.");
     }
   }
   // the key: one 8-byte transfer (04 F0 22 24 07 35 7D F7), nothing else in it
@@ -114,15 +115,15 @@ const char* uboot::enter(int d, Chip& chip) {
   bool sent = midi::sendWait(d, KEY, sizeof KEY, 1000);
   midi::thru = true;
   if (!sent) {
-    return "It didn't take MIDI.";
+    return tr("It didn't take MIDI.");
   }
   hal::log("uboot: key sent to %d", d);
   uint32_t start = hal::millis();
   while (!hal::storageThere(VID, PID)) {
     if (hal::millis() - start > 10000) {
       return hal::storageSeen(VID, PID)
-                 ? "Its boot loader came, but fm1buddy couldn't open it: switch the FM-1 off and on, and try again."
-                 : "It didn't go into its boot loader (is it running stock V15, or a firmware like fomajam?).";
+                 ? tr("Its boot loader came, but fm1buddy couldn't open it: switch the FM-1 off and on, and try again.")
+                 : tr("It didn't go into its boot loader (is it running stock V15, or a firmware like fomajam?).");
     }
     wait(50);
   }
@@ -133,8 +134,8 @@ const char* uboot::attach(Chip& chip) {
   static_assert(MFLR_LOADER_LEN <= LOADER_MAX, "the loader doesn't fit its slot");
   for (uint32_t start = hal::millis(); !hal::storageThere(VID, PID);) {
     if (hal::millis() - start > 10000) {
-      return hal::storageSeen(VID, PID) ? "Its boot loader came, but fm1buddy couldn't open it."
-                                        : "Its boot loader didn't show up on USB.";
+      return hal::storageSeen(VID, PID) ? tr("Its boot loader came, but fm1buddy couldn't open it.")
+                                        : tr("Its boot loader didn't show up on USB.");
     }
     wait(50);
   }
@@ -151,7 +152,7 @@ const char* uboot::attach(Chip& chip) {
     }
   }
   if (!ready) {
-    return "Its boot loader didn't answer.";
+    return tr("Its boot loader didn't answer.");
   }
   hal::log("uboot: %.8s %.16s %.4s", (const char*)inq + 8, (const char*)inq + 16, (const char*)inq + 32);
   // its vendor and product, as it gives them ("WL80UBOOT1.00"), to show
@@ -176,7 +177,7 @@ const char* uboot::attach(Chip& chip) {
       ok = hal::storageCommand(cdb, 16, false, piece, n, 0, 2000);
     }
     if (!ok) {
-      return "Its boot loader didn't take the loader.";
+      return tr("Its boot loader didn't take the loader.");
     }
   }
   // run it; it's running when it answers READ_KEY (the jump's own answer may be lost, and the loader doesn't know
@@ -191,7 +192,7 @@ const char* uboot::attach(Chip& chip) {
     running = exec(READ_KEY, key, 4, resp);
   }
   if (!running) {
-    return "The loader didn't start.";
+    return tr("The loader didn't start.");
   }
   uint8_t k[2] = {resp[7], resp[6]};  // its answer's 4th and 5th, the other way round, deciphered
   cipher(k, 2);
@@ -201,7 +202,7 @@ const char* uboot::attach(Chip& chip) {
   }
   if (!exec(GET_ONLINE_DEVICE, 0, 0, resp)) {
     leave();
-    return "The loader didn't say what flash it has.";
+    return tr("The loader didn't say what flash it has.");
   }
   chip.flashId = resp[4] | resp[5] << 8 | resp[6] << 16 | (uint32_t)resp[7] << 24;
   uint8_t cap = chip.flashId & 0xFF;  // JEDEC: its size, as a power of 2
@@ -297,7 +298,7 @@ const char* uboot::read(const Chip& chip, std::vector<uint8_t>& out, void (*prog
       }
     }
     if (!ok) {
-      return "It stopped answering.";
+      return tr("It stopped answering.");
     }
     if (progress) {
       progress(at + n, chip.size);  // (each read: the flash map shows each sector)
@@ -317,12 +318,12 @@ void uboot::keepAlive() {
 const char* uboot::writeSector(uint32_t addr, const uint8_t* data) {
   if (addr < WRITE_FROM || addr >= WRITE_TO || addr % SECTOR) {
     hal::log("uboot: a write to %06X refused", (unsigned)addr);
-    return "That isn't somewhere it writes.";  // (never: the job only asks for these)
+    return tr("That isn't somewhere it writes.");  // (never: the job only asks for these)
   }
   uint8_t args[9], cdb[16], resp[16], back[IO];
   be32(args, addr);
   if (!exec(ERASE_SECTOR, args, 4, resp, 3, 5000)) {
-    return "It didn't erase.";
+    return tr("It didn't erase.");
   }
   for (uint32_t off = 0; off < SECTOR; off += IO) {
     be32(args, addr + off);
@@ -335,7 +336,7 @@ const char* uboot::writeSector(uint32_t addr, const uint8_t* data) {
       ok = hal::storageCommand(cdb, 16, false, (uint8_t*)data + off, IO, 0, 2000);
     }
     if (!ok) {
-      return "It didn't take what was written.";
+      return tr("It didn't take what was written.");
     }
   }
   for (uint32_t off = 0; off < SECTOR; off += IO) {
@@ -348,11 +349,11 @@ const char* uboot::writeSector(uint32_t addr, const uint8_t* data) {
       ok = hal::storageCommand(cdb, 16, true, back, IO, &got, 2000) && got == IO;
     }
     if (!ok) {
-      return "It stopped answering.";
+      return tr("It stopped answering.");
     }
     if (memcmp(back, data + off, IO)) {
       hal::log("uboot: %06X reads back differently", (unsigned)(addr + off));
-      return "It read back differently.";
+      return tr("It read back differently.");
     }
   }
   return 0;

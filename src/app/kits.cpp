@@ -1,4 +1,5 @@
 #include "kits.h"
+#include "i18n.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -139,11 +140,11 @@ std::string kits::summary(const std::vector<Kit>& k) {
   std::string s;
   for (auto& kit : k) {
     s += (s.empty() ? "" : ", ") + kit.name + " (" +
-         (kit.drum ? std::string("a drum kit")
+         (kit.drum ? std::string(tr("a drum kit"))
                    : std::to_string(kit.samples.size()) + (kit.samples.size() == 1 ? " sample" : " samples")) +
          ")";
   }
-  return s.empty() ? "none" : s;
+  return s.empty() ? tr("none") : s;
 }
 
 // ------------------------------------------------------------------------------------------- .wav ---
@@ -159,20 +160,20 @@ static uint32_t le(const uint8_t* p, int n) {
 static const char* readWav(const std::string& path, std::vector<float>& x, uint32_t& rate) {
   FILE* f = fopen(path.c_str(), "rb");
   if (!f) {
-    return "can't read it";
+    return tr("can't read it");
   }
   fseek(f, 0, SEEK_END);
   long size = ftell(f);
   fseek(f, 0, SEEK_SET);
   if (size < 44 || size > WAV_MAX) {
     fclose(f);
-    return size < 44 ? "not a .wav" : "too big";
+    return size < 44 ? tr("not a .wav") : tr("too big");
   }
   std::vector<uint8_t> b(size);
   bool got = fread(b.data(), 1, size, f) == (size_t)size;
   fclose(f);
   if (!got || memcmp(b.data(), "RIFF", 4) || memcmp(b.data() + 8, "WAVE", 4)) {
-    return "not a .wav";
+    return tr("not a .wav");
   }
   uint32_t format = 0, ch = 0, bits = 0;
   for (uint32_t o = 12; o + 8 <= b.size();) {
@@ -182,7 +183,7 @@ static const char* readWav(const std::string& path, std::vector<float>& x, uint3
     } else if (!memcmp(&b[o], "data", 4) && ch) {
       if ((format != 1 && format != 3 && format != 0xFFFE) || (bits != 8 && bits != 16 && bits != 24 && bits != 32) ||
           rate < 1000) {
-        return "a .wav it can't read";
+        return tr("a .wav it can't read");
       }
       uint32_t w = bits / 8, end = std::min<uint32_t>(b.size(), o + 8 + n), frames = (end - o - 8) / (w * ch);
       x.resize(frames);
@@ -206,7 +207,7 @@ static const char* readWav(const std::string& path, std::vector<float>& x, uint3
     }
     o += 8 + n + (n & 1);
   }
-  return "no sound in it";
+  return tr("no sound in it");
 }
 
 // at RATE, the silent tail cut, its peak at want
@@ -315,7 +316,7 @@ const char* kits::build(const std::string& dir, std::vector<uint8_t>& bank) {
   static std::string err;
   auto found = folders(dir);
   if (found.empty()) {
-    return "No .wav files in its kits.";
+    return tr("No .wav files in its kits.");
   }
   if (found.size() > KITS_MAX) {
     err = std::to_string(found.size()) + " kits: " + std::to_string(KITS_MAX) + " at most.";
@@ -444,7 +445,7 @@ static bool writeWav(const std::string& path, const std::vector<int16_t>& x, uin
 const char* kits::unpack(const std::vector<uint8_t>& b, const std::string& dir) {
   std::vector<Kit> ks;
   if (!describe(b, ks)) {
-    return "Its kits file isn't one.";
+    return tr("Its kits file isn't one.");
   }
   mkdir(dir.c_str(), 0777);
   size_t base = 8 + 12 * b[4];
@@ -456,7 +457,7 @@ const char* kits::unpack(const std::vector<uint8_t>& b, const std::string& dir) 
       const uint8_t* e = &b[base + 20 * (h[8] + s)];
       uint32_t off = le(e + 8, 4), len = le(e + 12, 4), rate = le(e + 16, 2);
       if (off > b.size() || (len + 1) / 2 > b.size() - off || e[18] > 88) {
-        return "Its kits file isn't one.";
+        return tr("Its kits file isn't one.");
       }
       std::string n = ks[k].samples[s];
       for (auto& c : n) {
@@ -465,7 +466,7 @@ const char* kits::unpack(const std::vector<uint8_t>& b, const std::string& dir) 
       char num[4];
       snprintf(num, sizeof num, "%02d-", s + 1);
       if (!writeWav(kd + "/" + (ks[k].drum ? "" : num) + n + ".wav", decode(&b[off], len, e[18]), rate)) {
-        return "Can't write it to the SD card.";
+        return tr("Can't write it to the SD card.");
       }
     }
   }

@@ -6,6 +6,7 @@
 
 #include "jobs.h"
 #include "ui_priv.h"
+#include "i18n.h"
 
 using namespace ui;
 
@@ -175,14 +176,14 @@ lv_obj_t* ui::flashMap(lv_obj_t* parent, int cell, bool writing) {
   lv_obj_t* keys = box(row);
   lv_obj_set_style_pad_row(keys, 2, 0);
   if (writing) {  // (what's going on first: what's on it after)
-    key(keys, role(TO_WRITE), "to write");
-    key(keys, role(WRITTEN), "written");
+    key(keys, role(TO_WRITE), tr("to write"));
+    key(keys, role(WRITTEN), tr("written"));
   } else {
-    label(keys, "4 KiB each", &lv_font_montserrat_12, t.text);
+    label(keys, tr("4 KiB each"), &lv_font_montserrat_12, t.text);
   }
-  key(keys, kindColor(jobs::MAP_DATA), "firmware, data");
-  key(keys, kindColor(jobs::MAP_FREE), "free");
-  key(keys, kindColor(jobs::MAP_HEAD), "never written");
-  key(keys, t.off, "not read yet");
+  key(keys, kindColor(jobs::MAP_DATA), tr("firmware, data"));
+  key(keys, kindColor(jobs::MAP_FREE), tr("free"));
+  key(keys, kindColor(jobs::MAP_HEAD), tr("never written"));
+  key(keys, t.off, tr("not read yet"));
   return row;
 }

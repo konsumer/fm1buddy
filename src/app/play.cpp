@@ -9,6 +9,7 @@
 
 #include "hal.h"
 #include "midi.h"
+#include "i18n.h"
 
 #define VERSION 1
 #define PATTERN_MAX 48  // notes the arpeggiator plays (keys x chord notes)
@@ -459,16 +460,16 @@ void play::summary(char* out, int n) {
   int k = 0;
   float bpm = tempo();
   if (s.clock == CLOCK_LEAD) {
-    k += snprintf(out + k, n - k, "lead %u BPM", (unsigned)s.bpm);
+    k += snprintf(out + k, n - k, tr("lead %u BPM"), (unsigned)s.bpm);
   } else if (s.clock == CLOCK_FOLLOW) {
-    k += bpm > 0 ? snprintf(out + k, n - k, "follow %.0f BPM", bpm) : snprintf(out + k, n - k, "follow (no clock)");
+    k += bpm > 0 ? snprintf(out + k, n - k, tr("follow %.0f BPM"), bpm) : snprintf(out + k, n - k, "%s", tr("follow (no clock)"));
   } else {
-    k += snprintf(out + k, n - k, "clock off");
+    k += snprintf(out + k, n - k, "%s", tr("clock off"));
   }
   if (s.arp && k < n) {
-    k += snprintf(out + k, n - k, ", arp %s %s", ARP_NAMES[s.arpMode % ARPS], RATE_NAMES[s.rate % RATES]);
+    k += snprintf(out + k, n - k, tr(", arp %s %s"), tr(ARP_NAMES[s.arpMode % ARPS]), RATE_NAMES[s.rate % RATES]);
   }
   if (s.chord && k < n) {
-    snprintf(out + k, n - k, ", %s chords", CHORD_NAMES[s.chord % CHORDS]);
+    snprintf(out + k, n - k, tr(", %s chords"), tr(CHORD_NAMES[s.chord % CHORDS]));
   }
 }

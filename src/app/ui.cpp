@@ -15,6 +15,7 @@
 #include "record.h"
 #include "src/themes/lv_theme_private.h"
 #include "ui_priv.h"
+#include "i18n.h"
 
 namespace ui {
 void (*tick)();
@@ -243,7 +244,8 @@ lv_obj_t* ui::chip(lv_obj_t* parent, const char* text, uint32_t c) {
 
 void ui::toast(const char* text, bool bad) {
   const Theme& t = theme();
-  lv_obj_t* l = label(lv_layer_top(), text, &lv_font_montserrat_14, bad ? t.text : t.bg);
+  // (in the language picked, if it's one of the table's as it is: the board's own errors come in English)
+  lv_obj_t* l = label(lv_layer_top(), tr(text), &lv_font_montserrat_14, bad ? t.text : t.bg);
   lv_obj_set_style_bg_color(l, color(bad ? 0xc02020 : t.accent), 0);
   lv_obj_set_style_bg_opa(l, LV_OPA_COVER, 0);
   lv_obj_set_style_radius(l, 6, 0);
@@ -609,7 +611,7 @@ static void watch(lv_timer_t*) {
     }
   }
   if (jobs::bluetoothPaused()) {
-    toast("Bluetooth MIDI is paused: Wi-Fi is on.");
+    toast(tr("Bluetooth MIDI is paused: Wi-Fi is on."));
   }
   if (seenFinished != jobs::finished) {  // (a quick one may start and end between two looks)
     seenFinished = jobs::finished;
@@ -665,8 +667,15 @@ void ui::rebuild() {
 
 // the frame: the rail, the start page's tab lit, its page empty. Drawn as soon as there's a screen, so the app is there
 // at once: the rest comes in a moment (ui::begin)
+bool ui::flipped() {
+  uint8_t f = 0;
+  return hal::load("flip", &f, 1) && f;
+}
+
 void ui::frame() {
   settingsLoad();
+  i18n::begin();
+  hal::flip(flipped());
   setTheme(lv_display_get_default());
   build();
   static const Tab tabs[STARTS] = {FIRMWARE, MIDI, MIDI, MIDI, SOUNDS, FIRMWARE, MIDI, SOUNDS};

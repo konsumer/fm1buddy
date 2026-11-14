@@ -24,6 +24,7 @@ static Source source = SD;
 static bool sourceChosen, hubAsked;
 static int sortBy = NEWEST;
 static std::string kindFilter;  // "": all
+static std::string searchWord;  // only the firmwares with it in their name or author (or SD card file): "": all
 // the machines a firmware can be for (an SMK-37 package says which model), and which the lists show: the Hub's, the
 // one on the hub until another is picked (-1); the SD card's, all (-1) until one is picked
 enum Machine { FM1,
@@ -126,7 +127,22 @@ static bool forDevice(const FwItem& f) {
   return machineOf(catalog::hub.str(f.product)) == hubShows();
 }
 
-// the list's rows, in order: on the SD card, the way up and the folders first
+// s has w in it, any case
+static bool has(const char* s, const std::string& w) {
+  for (; *s; s++) {
+    if (!strncasecmp(s, w.c_str(), w.size())) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool found(const FwList& l, const FwItem& f) {
+  return has(l.str(f.name), searchWord) || has(l.str(f.author), searchWord) || (source == SD && has(l.str(f.file), searchWord));
+}
+
+// the list's rows, in order: on the SD card, the way up and the folders first (a search: what it found on all the
+// card, no folders)
 static std::vector<uint32_t> shown() {
   const FwList& l = srcList();
   std::vector<uint32_t> v;
@@ -139,14 +155,21 @@ static std::vector<uint32_t> shown() {
     }
   }
   int machine = source == HUB ? hubShows() : sdMachine;
+  bool search = !searchWord.empty();
   for (size_t i = 0; i < l.size(); i++) {
     const FwItem& f = l[i];
     const char* file = l.str(f.file);
-    if (source == SD && strncmp(file, sdFolder.c_str(), sdFolder.size())) {
+    if (source == SD && !search && strncmp(file, sdFolder.c_str(), sdFolder.size())) {
       continue;  // (not in the folder shown)
     }
     there = true;
     if (machine >= 0 && machineOf(l.str(f.product)) != machine) {
+      continue;
+    }
+    if (search) {
+      if (found(l, f) && (source == SD || kindFilter.empty() || f.kinds & kind)) {
+        v.push_back(i);
+      }
       continue;
     }
     if (const char* slash = source == SD ? strchr(file + sdFolder.size(), '/') : 0) {  // in a folder in it
@@ -181,7 +204,7 @@ static std::vector<uint32_t> shown() {
   if (source == SD) {
     std::sort(folders.begin(), folders.end(), [](const Folder& a, const Folder& b) { return strcasecmp(a.name.c_str(), b.name.c_str()) < 0; });
     std::vector<uint32_t> r;
-    if (!sdFolder.empty()) {
+    if (!sdFolder.empty() && !search) {
       r.push_back(ROW_UP);
     }
     for (size_t i = 0; i < folders.size(); i++) {
@@ -364,7 +387,9 @@ static void fillList() {
     lv_obj_set_width(l, LV_PCT(100));
     lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_pad_all(l, 12, 0);
-    if (source == SD && hal::sd() && !catalog::sd.empty()) {
+    if (!searchWord.empty() && !srcList().empty()) {
+      lv_label_set_text(l, ("Nothing with \"" + searchWord + "\" in it.").c_str());
+    } else if (source == SD && hal::sd() && !catalog::sd.empty()) {
       lv_label_set_text(l, "None for that machine on the SD card.");
     } else if (source == SD) {
       lv_label_set_text(l, hal::sd() ? "No firmwares in /fm1 on the SD card. Save some from the Hub, or copy .fwsc files there (in folders too)."
@@ -443,6 +468,8 @@ static void showStatus() {
   std::string s;
   if (busy) {
     s = jobs::status();
+  } else if (!searchWord.empty()) {
+    s = std::to_string(rows.size()) + " with \"" + searchWord + "\"";
   } else if (source == SD) {
     s = hal::sd() ? std::to_string(catalog::sd.size()) + " in /fm1 on the SD card" : "No SD card";
   } else if (!catalog::hubUpdated.empty()) {
@@ -525,6 +552,73 @@ static void pickSort(lv_event_t* e) {
   fromTop();
 }
 
+// ------------------------------------------------------------------------------------------- search ---
+// a word to look for, on the onscreen keyboard: OK looks for it, x stops looking
+static lv_obj_t* searchTa;
+
+static void searched(lv_event_t* e) {
+  if (lv_event_get_code(e) == LV_EVENT_READY) {
+    std::string w = lv_textarea_get_text(searchTa);
+    size_t a = w.find_first_not_of(' '), b = w.find_last_not_of(' ');
+    searchWord = a == std::string::npos ? "" : w.substr(a, b - a + 1);
+    fresh = true;
+  }
+  go(firmwarePage);
+}
+
+static void searchPage(lv_obj_t* page) {
+  fullscreen(true);
+  header(page, "Search", firmwarePage);
+  lv_obj_t* r = box(page, LV_FLEX_FLOW_ROW);
+  lv_obj_set_style_pad_column(r, 4, 0);
+  searchTa = lv_textarea_create(r);
+  lv_textarea_set_one_line(searchTa, true);
+  lv_textarea_set_placeholder_text(searchTa, "name or author");
+  lv_textarea_set_text(searchTa, searchWord.c_str());
+  lv_obj_set_flex_grow(searchTa, 1);
+  lv_obj_add_state(searchTa, LV_STATE_FOCUSED);
+  lv_obj_t* x = button(r, LV_SYMBOL_CLOSE, [](lv_event_t*) {
+    searchWord.clear();
+    fresh = true;
+    go(firmwarePage);
+  });
+  lv_obj_set_size(x, 40, 36);
+  keyboard(page, searchTa, searched);
+}
+
+// a magnifying glass (the fonts have none): a ring and a handle, in the button's text color
+static lv_obj_t* searchButton(lv_obj_t* parent) {
+  static const lv_point_precise_t HANDLE[] = {{11, 11}, {16, 16}};
+  lv_obj_t* b = lv_button_create(parent);
+  lv_obj_set_size(b, 30, 30);
+  lv_obj_set_style_pad_all(b, 0, 0);
+  lv_obj_add_event_cb(b, [](lv_event_t*) { go(searchPage); }, LV_EVENT_CLICKED, 0);
+  bool on = !searchWord.empty();  // (looking for something: lit, like a picked button)
+  if (on) {
+    lv_obj_add_state(b, LV_STATE_CHECKED);
+  }
+  lv_obj_t* g = lv_obj_create(b);
+  lv_obj_remove_style_all(g);
+  lv_obj_remove_flag(g, (lv_obj_flag_t)(LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE));
+  lv_obj_set_size(g, 17, 17);
+  lv_obj_center(g);
+  lv_color_t c = color(on ? theme().bg : theme().text);
+  lv_obj_t* ring = lv_obj_create(g);
+  lv_obj_remove_style_all(ring);
+  lv_obj_remove_flag(ring, LV_OBJ_FLAG_CLICKABLE);  // (the button's tap)
+  lv_obj_set_size(ring, 12, 12);
+  lv_obj_set_style_radius(ring, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_border_width(ring, 2, 0);
+  lv_obj_set_style_border_color(ring, c, 0);
+  lv_obj_t* h = lv_line_create(g);
+  lv_line_set_points(h, HANDLE, 2);
+  lv_obj_remove_flag(h, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_style_line_width(h, 3, 0);
+  lv_obj_set_style_line_rounded(h, true, 0);
+  lv_obj_set_style_line_color(h, c, 0);
+  return b;
+}
+
 void ui::firmwareSource(bool hub) {
   source = hub ? HUB : SD;
   sourceChosen = true;  // (the SD card's even with none on it: no Wi-Fi then)
@@ -539,6 +633,7 @@ void ui::firmwarePage(lv_obj_t* page) {
   listFm1 = fm1Now();
   lv_obj_t* head = header(page, 0);
   lv_obj_set_style_pad_column(head, 4, 0);
+  searchButton(head);
   for (int i = 0; i < 2; i++) {
     lv_obj_t* b = srcButton[i] = button(head, "", pickSource, (void*)(intptr_t)i);
     lv_obj_set_height(b, 30);

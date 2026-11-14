@@ -338,12 +338,7 @@ static void passwordPage(lv_obj_t* page) {
   lv_obj_set_size(eye, 40, 36);
   msg = line(page, "", &lv_font_montserrat_12, t.dim);
   lv_obj_set_width(msg, LV_PCT(100));
-  lv_obj_t* kb = lv_keyboard_create(page);
-  lv_obj_set_size(kb, LV_PCT(100), LV_PCT(100));
-  lv_obj_set_flex_grow(kb, 1);
-  lv_keyboard_set_textarea(kb, ta);
-  lv_obj_add_event_cb(kb, keys, LV_EVENT_READY, 0);
-  lv_obj_add_event_cb(kb, keys, LV_EVENT_CANCEL, 0);
+  keyboard(page, ta, keys);
   tick = showJoin;
   jobDone = joined;
 }

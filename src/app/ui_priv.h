@@ -50,7 +50,8 @@ lv_obj_t* label(lv_obj_t* parent, const char* text, const lv_font_t* font, uint3
 // a label on one line, cut with "..." (width: what the parent's flex leaves, or set)
 lv_obj_t* line(lv_obj_t* parent, const char* text, const lv_font_t* font, uint32_t color);
 lv_obj_t* button(lv_obj_t* parent, const char* text, lv_event_cb_t cb, void* data = 0);
-lv_obj_t* listRow(lv_obj_t* parent, lv_event_cb_t cb, void* data);  // a row to tap: a flex row
+lv_obj_t* keyboard(lv_obj_t* page, lv_obj_t* ta, lv_event_cb_t done);  // the onscreen keyboard, typing into ta: the rest of the page. done: LV_EVENT_READY (its OK) or LV_EVENT_CANCEL
+lv_obj_t* listRow(lv_obj_t* parent, lv_event_cb_t cb, void* data);     // a row to tap: a flex row
 lv_obj_t* chip(lv_obj_t* parent, const char* text, uint32_t color);
 // the flash map (jobs.h) and its key: cells of cell pixels; writing: the recovery's colors too
 lv_obj_t* flashMap(lv_obj_t* parent, int cell, bool writing);

@@ -183,6 +183,16 @@ lv_obj_t* ui::button(lv_obj_t* parent, const char* text, lv_event_cb_t cb, void*
   return b;
 }
 
+lv_obj_t* ui::keyboard(lv_obj_t* page, lv_obj_t* ta, lv_event_cb_t done) {
+  lv_obj_t* kb = lv_keyboard_create(page);
+  lv_obj_set_size(kb, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_flex_grow(kb, 1);
+  lv_keyboard_set_textarea(kb, ta);
+  lv_obj_add_event_cb(kb, done, LV_EVENT_READY, 0);
+  lv_obj_add_event_cb(kb, done, LV_EVENT_CANCEL, 0);
+  return kb;
+}
+
 lv_obj_t* ui::header(lv_obj_t* page, const char* title, Builder back) {
   lv_obj_t* row = box(page, LV_FLEX_FLOW_ROW);
   lv_obj_set_height(row, HEAD_H);

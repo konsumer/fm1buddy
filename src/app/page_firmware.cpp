@@ -546,6 +546,11 @@ static void pickSort(lv_event_t* e) {
 // is the order you're in
 static const char* const SORT_MARKS[] = {"", "A-Z"};  // the star is drawn, "A-Z" says it
 static const int8_t STAR[][2] = {{0, -7}, {2, -2}, {7, -2}, {3, 1}, {4, 6}, {0, 3}, {-4, 6}, {-3, 1}, {-7, -2}, {-2, -2}};  // one point up
+// the star filled as five point triangles plus the inner pentagon fanned from STAR[1]: a fan from the center would
+// put vertical edges in four of its triangles, and the SW rasterizer's vertical-edge branch fills the notch between
+// the legs (see the artifact in the 2.8" screenshots) - no triangle here shares an x with another
+static const int8_t STAR_FILL[][3] = {{0, 9, 1}, {2, 1, 3}, {4, 3, 5}, {6, 5, 7}, {8, 7, 9},
+                                      {1, 3, 5}, {1, 5, 7}, {1, 7, 9}};
 static void sortStar(lv_event_t* e) {
   if (sortBy != NEWEST) {
     return;
@@ -562,10 +567,10 @@ static void sortStar(lv_event_t* e) {
   lv_draw_triangle_dsc_init(&d);
   d.bg_color = color(t.text);
   d.bg_opa = LV_OPA_COVER;
-  for (int k = 0; k < 10; k++) {  // the star filled from its center, one triangle per edge
-    d.p[0].x = cx, d.p[0].y = cy;
-    d.p[1].x = cx + STAR[k][0], d.p[1].y = cy + STAR[k][1];
-    d.p[2].x = cx + STAR[(k + 1) % 10][0], d.p[2].y = cy + STAR[(k + 1) % 10][1];
+  for (const auto& tri : STAR_FILL) {  // one triangle per point, then the pentagon core
+    d.p[0].x = cx + STAR[tri[0]][0], d.p[0].y = cy + STAR[tri[0]][1];
+    d.p[1].x = cx + STAR[tri[1]][0], d.p[1].y = cy + STAR[tri[1]][1];
+    d.p[2].x = cx + STAR[tri[2]][0], d.p[2].y = cy + STAR[tri[2]][1];
     lv_draw_triangle(layer, &d);
   }
 }

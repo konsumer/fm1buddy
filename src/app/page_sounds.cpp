@@ -13,6 +13,7 @@
 #include "record.h"
 #include "sounds.h"
 #include "ui_priv.h"
+#include "i18n.h"
 
 using namespace ui;
 
@@ -98,14 +99,14 @@ static void finishRecording(bool keep) {
     return;
   }
   if (data.empty()) {
-    toast("Nothing came.", true);
+    toast(tr("Nothing came."), true);
     return;
   }
   std::string name = sounds::save(data, "recorded");
   if (name.empty()) {
-    toast("Can't write it to the SD card.", true);
+    toast(tr("Can't write it to the SD card."), true);
   } else {
-    toast(("Saved as " SYX_DIR "/" + name + ".").c_str());
+    toast((tr("Saved as " SYX_DIR "/") + name + ".").c_str());
   }
 }
 
@@ -169,8 +170,8 @@ static void fileRows(lv_obj_t* body) {
     label(r, f.folder ? LV_SYMBOL_RIGHT : s, f.folder ? &lv_font_montserrat_14 : &lv_font_montserrat_12, t.dim);
   }
   if (files.empty()) {
-    label(body, !hal::sd() ? "No SD card." : folder.empty() ? "No .syx files yet."
-                                                            : "Nothing in it.",
+    label(body, !hal::sd() ? tr("No SD card.") : folder.empty() ? tr("No .syx files yet.")
+                                                            : tr("Nothing in it."),
           &lv_font_montserrat_12, t.dim);
   }
 }
@@ -187,7 +188,7 @@ static void sent() {
   if (jobs::kind != jobs::SEND) {
     return;
   }
-  toast(jobs::ok ? "Sent." : devText(jobs::error).c_str(), !jobs::ok);
+  toast(jobs::ok ? tr("Sent.") : devText(jobs::error).c_str(), !jobs::ok);
   sure = false;
   go(syxPage);
 }
@@ -195,11 +196,11 @@ static void sent() {
 static void sendTapped(lv_event_t* e) {
   if (!sure) {
     sure = true;
-    lv_label_set_text(lv_obj_get_child((lv_obj_t*)lv_event_get_target(e), 0), "Sure? Tap again");
+    lv_label_set_text(lv_obj_get_child((lv_obj_t*)lv_event_get_target(e), 0), tr("Sure? Tap again"));
     return;
   }
   if (!jobs::send(dev, sel)) {
-    toast("Busy: try again in a moment.", true);
+    toast(tr("Busy: try again in a moment."), true);
   }
   go(syxPage);
 }
@@ -217,15 +218,15 @@ void ui::syxPage(lv_obj_t* page) {
   lv_obj_set_style_pad_row(body, 4, 0);
   std::vector<uint8_t> data;
   if (!sounds::load(sel, data)) {
-    label(body, "Can't read it from the SD card.", &lv_font_montserrat_14, t.knob[0]);
+    label(body, tr("Can't read it from the SD card."), &lv_font_montserrat_14, t.knob[0]);
     return;
   }
   sounds::Info info = sounds::describe(data);
   char s[64];
-  snprintf(s, sizeof s, "%s, %u bytes", info.kind.c_str(), (unsigned)data.size());
+  snprintf(s, sizeof s, tr("%s, %u bytes"), info.kind.c_str(), (unsigned)data.size());
   label(body, s, &lv_font_montserrat_14, t.text);
   if (!info.good) {
-    lv_obj_t* l = label(body, "Something in it isn't right (a checksum, or bytes outside SysEx): it may not load.",
+    lv_obj_t* l = label(body, tr("Something in it isn't right (a checksum, or bytes outside SysEx): it may not load."),
                         &lv_font_montserrat_12, t.knob[1]);
     lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(l, LV_PCT(100));
@@ -248,16 +249,16 @@ void ui::syxPage(lv_obj_t* page) {
     status = label(row, devText(jobs::status()).c_str(), &lv_font_montserrat_14, t.accent);
   } else {
     status = 0;
-    std::string to = there ? std::string("Send to ") + v.name : "Nothing to send it to";
+    std::string to = there ? std::string(tr("Send to ")) + v.name : tr("Nothing to send it to");
     lv_obj_t* b = button(row, to.c_str(), sendTapped);
     if (!there || !info.messages) {
       lv_obj_add_state(b, LV_STATE_DISABLED);
     }
   }
   if (there && info.messages) {
-    const char* what = info.kind == "DX7 bank: 32 voices" ? "It replaces the 32 voices the device has in that bank."
-                       : info.kind == "DX7 voice"         ? "It replaces the voice the device is on (save it there to keep it)."
-                                                          : "What it does is up to the device's firmware.";
+    const char* what = info.kind == tr("DX7 bank: 32 voices") ? tr("It replaces the 32 voices the device has in that bank.")
+                       : info.kind == tr("DX7 voice")         ? tr("It replaces the voice the device is on (save it there to keep it).")
+                                                          : tr("What it does is up to the device's firmware.");
     lv_obj_t* l = label(body, what, &lv_font_montserrat_12, t.dim);
     lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(l, LV_PCT(100));
@@ -269,7 +270,7 @@ void ui::syxPage(lv_obj_t* page) {
 // -------------------------------------------------------------------------------------- a setup ---
 static void loaded() {
   if (jobs::kind == jobs::RESTORE) {
-    toast(jobs::ok ? "Loaded: it's saved on it." : devText(jobs::error).c_str(), !jobs::ok);
+    toast(jobs::ok ? tr("Loaded: it's saved on it.") : devText(jobs::error).c_str(), !jobs::ok);
   } else if (jobs::kind == jobs::EXPORT) {
     toast(jobs::ok ? (jobs::saved + ".").c_str() : devText(jobs::error).c_str(), !jobs::ok);
   } else {
@@ -281,7 +282,7 @@ static void loaded() {
 
 static void exportTapped(lv_event_t*) {
   if (!jobs::exportSetup(setup, speaks.app)) {
-    toast("Busy: try again in a moment.", true);
+    toast(tr("Busy: try again in a moment."), true);
   }
   go(setupPage);
 }
@@ -289,11 +290,11 @@ static void exportTapped(lv_event_t*) {
 static void loadTapped(lv_event_t* e) {
   if (!sure) {
     sure = true;
-    lv_label_set_text(lv_obj_get_child((lv_obj_t*)lv_event_get_target(e), 0), "Sure? Tap again");
+    lv_label_set_text(lv_obj_get_child((lv_obj_t*)lv_event_get_target(e), 0), tr("Sure? Tap again"));
     return;
   }
   if (!jobs::restore(dev, setup)) {
-    toast("Busy: try again in a moment.", true);
+    toast(tr("Busy: try again in a moment."), true);
   }
   go(setupPage);
 }
@@ -307,9 +308,9 @@ void ui::setupPage(lv_obj_t* page) {
   bool has = what.song || !what.kits.empty();
   char s[96];
   if (what.song) {
-    snprintf(s, sizeof s, "%s's song, %u KB", speaks.app, (unsigned)((what.song + 1023) / 1024));
+    snprintf(s, sizeof s, tr("%s's song, %u KB"), speaks.app, (unsigned)((what.song + 1023) / 1024));
   } else {
-    snprintf(s, sizeof s, has ? "No song: its kits only." : "Nothing in it for %s.", speaks.app);
+    snprintf(s, sizeof s, has ? tr("No song: its kits only.") : tr("Nothing in it for %s."), speaks.app);
   }
   label(body, s, &lv_font_montserrat_14, has ? t.text : t.knob[0]);
   for (auto& k : what.kits) {  // each kit: its name, and what it plays
@@ -317,7 +318,7 @@ void ui::setupPage(lv_obj_t* page) {
     for (auto& n : k.samples) {
       names += (names.empty() ? "" : " ") + n;
     }
-    lv_obj_t* l = label(body, (k.name + (k.drum ? " (a drum kit): " : ": ") + names).c_str(), &lv_font_montserrat_12, t.text);
+    lv_obj_t* l = label(body, (k.name + (k.drum ? tr(" (a drum kit): ") : ": ") + names).c_str(), &lv_font_montserrat_12, t.text);
     lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(l, LV_PCT(100));
   }
@@ -328,26 +329,26 @@ void ui::setupPage(lv_obj_t* page) {
   } else {
     status = 0;
     lv_obj_set_style_pad_column(row, 6, 0);
-    lv_obj_t* b = button(row, (std::string("Load into ") + speaks.app).c_str(), loadTapped);
-    lv_obj_t* x = button(row, "Export", exportTapped);
+    lv_obj_t* b = button(row, (std::string(tr("Load into ")) + speaks.app).c_str(), loadTapped);
+    lv_obj_t* x = button(row, tr("Export"), exportTapped);
     if (!has) {
       lv_obj_add_state(b, LV_STATE_DISABLED);
       lv_obj_add_state(x, LV_STATE_DISABLED);
     }
   }
   lv_obj_t* l = label(body,
-                      what.kits.empty() ? devText("It replaces the song on the FM-1, and saves it there. Stop it playing first.").c_str()
-                      : what.wavs       ? devText("It makes its kits from the .wav files in " KITS_DIR
-                                                  "/, then replaces the kits and the song on the FM-1. Stop it playing first.")
+                      what.kits.empty() ? devText(tr("It replaces the song on the FM-1, and saves it there. Stop it playing first.")).c_str()
+                      : what.wavs       ? devText(tr("It makes its kits from the .wav files in " KITS_DIR
+                                                  "/, then replaces the kits and the song on the FM-1. Stop it playing first."))
                                               .c_str()
-                                        : devText("It replaces the kits and the song on the FM-1. Stop it playing first.").c_str(),
+                                        : devText(tr("It replaces the kits and the song on the FM-1. Stop it playing first.")).c_str(),
                       &lv_font_montserrat_12, t.dim);
   lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(l, LV_PCT(100));
   l = label(body,
-            "Export writes its patterns as MIDI files (" MIDI_DIR
+            tr("Export writes its patterns as MIDI files (" MIDI_DIR
             "/, for a DAW or another sequencer) and its kits as .wav "
-            "files (" KITS_DIR "/, for other samplers, or to change them) in the setup's folder.",
+            "files (" KITS_DIR "/, for other samplers, or to change them) in the setup's folder."),
             &lv_font_montserrat_12, t.dim);
   lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(l, LV_PCT(100));
@@ -395,14 +396,14 @@ static void openSetup(lv_event_t* e) {
 
 static void keepTapped(lv_event_t*) {
   if (!jobs::keep(dev)) {
-    toast("Busy: try again in a moment.", true);
+    toast(tr("Busy: try again in a moment."), true);
   }
   go(soundsPage);
 }
 
 static void voiceTapped(lv_event_t*) {
   if (!jobs::voice(dev)) {
-    toast("Busy: try again in a moment.", true);
+    toast(tr("Busy: try again in a moment."), true);
   }
   go(soundsPage);
 }
@@ -411,9 +412,9 @@ static void soundsDone() {
   if (jobs::kind == jobs::PROBE) {
     soundsProbed();
   } else if (jobs::kind == jobs::VOICE) {
-    toast(jobs::ok ? ("Saved as " SYX_DIR "/" + jobs::saved + ".").c_str() : devText(jobs::error).c_str(), !jobs::ok);
+    toast(jobs::ok ? (tr("Saved as " SYX_DIR "/") + jobs::saved + ".").c_str() : devText(jobs::error).c_str(), !jobs::ok);
   } else if (jobs::kind == jobs::KEEP) {
-    toast(jobs::ok ? ("Saved as " SETUPS_DIR "/" + jobs::saved + ".").c_str() : devText(jobs::error).c_str(), !jobs::ok);
+    toast(jobs::ok ? (tr("Saved as " SETUPS_DIR "/") + jobs::saved + ".").c_str() : devText(jobs::error).c_str(), !jobs::ok);
   }
   go(soundsPage);
 }
@@ -431,14 +432,14 @@ static void soundsTick() {
     std::vector<uint8_t> data;
     midi::captured(dev, data);
     sounds::Info info = sounds::describe(data);
-    lv_label_set_text_fmt(recLabel, "Recording: %d message%s, %u bytes", info.messages, info.messages == 1 ? "" : "s",
+    lv_label_set_text_fmt(recLabel, tr("Recording: %d message%s, %u bytes"), info.messages, info.messages == 1 ? "" : "s",
                           (unsigned)data.size());
   }
 }
 
 void ui::soundsPage(lv_obj_t* page) {
   const Theme& t = theme();
-  header(page, "Manager");
+  header(page, tr("Manager"));
   lv_obj_t* body = scroller(page);
   lv_obj_set_style_pad_row(body, 4, 0);
   shownSeq = midi::seq;
@@ -452,10 +453,10 @@ void ui::soundsPage(lv_obj_t* page) {
   pickDevice();
 
   // recording the FM-1's sound; all of its flash to the SD card, and back on one that doesn't start
-  navRow(body, LV_SYMBOL_IMAGE "  Big Screen", "its firmwares only", mirrorPage, t.dim);
-  navRow(body, LV_SYMBOL_AUDIO "  Record audio", record::recording() ? "recording" : "", recordPage, t.knob[0]);
-  navRow(body, devText(LV_SYMBOL_SAVE "  Back up the FM-1").c_str(), "", backupPage, t.dim);
-  navRow(body, LV_SYMBOL_WARNING "  Unbrick", devText("FM-1 won't start?").c_str(), recoverStartPage, t.dim);
+  navRow(body, LV_SYMBOL_IMAGE "  Big Screen", tr("its firmwares only"), mirrorPage, t.dim);
+  navRow(body, tr(LV_SYMBOL_AUDIO "  Record audio"), record::recording() ? tr("recording") : "", recordPage, t.knob[0]);
+  navRow(body, devText(tr(LV_SYMBOL_SAVE "  Back up the FM-1")).c_str(), "", backupPage, t.dim);
+  navRow(body, tr(LV_SYMBOL_WARNING "  Unbrick"), devText(tr("FM-1 won't start?")).c_str(), recoverStartPage, t.dim);
 
   // the device
   std::string opts;
@@ -473,8 +474,8 @@ void ui::soundsPage(lv_obj_t* page) {
   }
   if (!n) {
     lv_obj_t* l = label(body,
-                        devText("Nothing on the hub. Plug in the FM-1: its sounds can be recorded to the SD card, and "
-                                ".syx files on the card (in " SYX_DIR ") sent to it.")
+                        devText(tr("Nothing on the hub. Plug in the FM-1: its sounds can be recorded to the SD card, and "
+                                ".syx files on the card (in " SYX_DIR ") sent to it."))
                             .c_str(),
                         &lv_font_montserrat_14, t.dim);
     lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
@@ -493,44 +494,44 @@ void ui::soundsPage(lv_obj_t* page) {
     bool asked = probedSerial == devSerial;
     asking = false;
     if (!fm1::candidate(dev)) {
-      label(chips, devText("Not an FM-1: SysEx only").c_str(), &lv_font_montserrat_12, t.dim);
+      label(chips, devText(tr("Not an FM-1: SysEx only")).c_str(), &lv_font_montserrat_12, t.dim);
     } else if (!asked) {
       if (!jobs::running && !fm1::busy) {
         jobs::probe(dev);
       }
       asking = true;
-      label(chips, "Asking what it speaks...", &lv_font_montserrat_12, t.dim);
+      label(chips, tr("Asking what it speaks..."), &lv_font_montserrat_12, t.dim);
     } else {
       if (speaks.share) {
         chip(chips, (std::string(speaks.app) + " " + speaks.appVersion).c_str(), t.knob[0]);
       }
       if (speaks.stockVoice) {
-        chip(chips, "M-VAVE voice", t.knob[2]);
+        chip(chips, tr("M-VAVE voice"), t.knob[2]);
       }
       if (speaks.felucca) {
-        chip(chips, speaks.version[0] ? speaks.version : "Felucca editor", t.knob[3]);
+        chip(chips, speaks.version[0] ? speaks.version : tr("Felucca editor"), t.knob[3]);
       }
       if (speaks.open) {
         chip(chips, "M-VAVE Open", t.knob[1]);
       }
       if (!speaks.share && !speaks.stockVoice && !speaks.felucca && !speaks.open) {
-        label(chips, "SysEx only", &lv_font_montserrat_12, t.dim);
+        label(chips, tr("SysEx only"), &lv_font_montserrat_12, t.dim);
       }
     }
 
     // what more it can do, by its firmware
     if (asked && speaks.sloop && speaks.proto >= 6) {
-      navRow(body, LV_SYMBOL_SAVE "  SLOOP", "backups, projects, samples", sloopPage, t.dim);
+      navRow(body, LV_SYMBOL_SAVE "  SLOOP", tr("backups, projects, samples"), sloopPage, t.dim);
     } else if (asked && speaks.slots) {  // Felucca, and the firmwares built on it that kept its sample slots
-      navRow(body, LV_SYMBOL_AUDIO "  Samples", "its sample slots", slotsPage, t.dim);
+      navRow(body, tr(LV_SYMBOL_AUDIO "  Samples"), tr("its sample slots"), slotsPage, t.dim);
     } else if (asked && fm1::candidate(dev)) {
-      std::string hint = speaks.sloop     ? "Backups, projects and sample slots need SLOOP 2.3 or later: update it from "
-                                            "Firmware (the Hub has it)."
+      std::string hint = speaks.sloop     ? tr("Backups, projects and sample slots need SLOOP 2.3 or later: update it from "
+                                            "Firmware (the Hub has it).")
                          : speaks.felucca ? devText(
-                                                "SLOOP (on the Hub) adds backups and projects you can load from here. "
-                                                "Back up the FM-1 (above) saves all of its flash, with any firmware.")
+                                                tr("SLOOP (on the Hub) adds backups and projects you can load from here. "
+                                                "Back up the FM-1 (above) saves all of its flash, with any firmware."))
                          : speaks.share   ? ""
-                                          : devText("Back up the FM-1 (above) saves all of its flash, with any firmware.");
+                                          : devText(tr("Back up the FM-1 (above) saves all of its flash, with any firmware."));
       if (!hint.empty()) {
         lv_obj_t* l = label(body, hint.c_str(), &lv_font_montserrat_12, t.dim);
         lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
@@ -541,22 +542,22 @@ void ui::soundsPage(lv_obj_t* page) {
     // record; its voice
     lv_obj_t* row = box(body, LV_FLEX_FLOW_ROW);
     lv_obj_set_style_pad_column(row, 6, 0);
-    lv_obj_t* rec = button(row, recording ? LV_SYMBOL_STOP " Save" : LV_SYMBOL_PLAY " Record SysEx", recordTapped);
+    lv_obj_t* rec = button(row, recording ? tr(LV_SYMBOL_STOP " Save") : tr(LV_SYMBOL_PLAY " Record SysEx"), recordTapped);
     if (recording) {
       lv_obj_add_state(rec, LV_STATE_CHECKED);
-      button(row, "Cancel", cancelTapped);
+      button(row, tr("Cancel"), cancelTapped);
     } else if (asked && speaks.stockVoice) {
-      lv_obj_t* b = button(row, "Save its voice", voiceTapped);
+      lv_obj_t* b = button(row, tr("Save its voice"), voiceTapped);
       if (jobs::running) {
         lv_obj_add_state(b, LV_STATE_DISABLED);
       }
     } else if (asked && speaks.share) {
-      lv_obj_t* b = button(row, "Save a setup", keepTapped);
+      lv_obj_t* b = button(row, tr("Save a setup"), keepTapped);
       if (jobs::running) {
         lv_obj_add_state(b, LV_STATE_DISABLED);
       }
     }
-    const char* about = recording ? "" : "Record SysEx keeps the SysEx it sends (start a dump from its menu), as a .syx.";
+    const char* about = recording ? "" : tr("Record SysEx keeps the SysEx it sends (start a dump from its menu), as a .syx.");
     recLabel = label(body, about, &lv_font_montserrat_12, recording ? t.accent : t.dim);
     lv_label_set_long_mode(recLabel, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(recLabel, LV_PCT(100));
@@ -568,7 +569,7 @@ void ui::soundsPage(lv_obj_t* page) {
   static std::vector<std::string> setups;
   setups.clear();
   if (n && probedSerial == devSerial && speaks.share) {
-    lv_obj_t* h = label(body, "Setups (" SETUPS_DIR ")", &lv_font_montserrat_14, t.text);
+    lv_obj_t* h = label(body, tr("Setups (" SETUPS_DIR ")"), &lv_font_montserrat_14, t.text);
     lv_obj_set_style_pad_top(h, 6, 0);
     std::vector<std::string> what;
     for (auto& name : sounds::setups()) {
@@ -576,8 +577,8 @@ void ui::soundsPage(lv_obj_t* page) {
       if (su.song || !su.kits.empty()) {
         setups.push_back(name);
         size_t k = su.kits.size();
-        what.push_back(std::string(su.song ? "song" : "") + (su.song && k ? " + " : "") +
-                       (k ? std::to_string(k) + (k == 1 ? " kit" : " kits") : ""));
+        what.push_back(std::string(su.song ? tr("song") : "") + (su.song && k ? " + " : "") +
+                       (k ? std::to_string(k) + (k == 1 ? tr(" kit") : " kits") : ""));
       }
     }
     for (size_t i = 0; i < setups.size(); i++) {
@@ -587,17 +588,17 @@ void ui::soundsPage(lv_obj_t* page) {
       label(r, (what[i] + " " LV_SYMBOL_RIGHT).c_str(), &lv_font_montserrat_12, t.dim);
     }
     if (setups.empty()) {
-      std::string none = std::string("None yet: Save a setup keeps ") + speaks.app +
-                         "'s song and kits here, to load back later. Kits of your own: folders of .wav files in "
-                         "a setup's " KITS_DIR "/.";
-      lv_obj_t* l = label(body, hal::sd() ? none.c_str() : "No SD card.", &lv_font_montserrat_12, t.dim);
+      std::string none = std::string(tr("None yet: Save a setup keeps ")) + speaks.app +
+                         tr("'s song and kits here, to load back later. Kits of your own: folders of .wav files in "
+                         "a setup's " KITS_DIR "/.");
+      lv_obj_t* l = label(body, hal::sd() ? none.c_str() : tr("No SD card."), &lv_font_montserrat_12, t.dim);
       lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
       lv_obj_set_width(l, LV_PCT(100));
     }
   }
 
   // the files
-  lv_obj_t* h = label(body, "On the SD card (" SYX_DIR ")", &lv_font_montserrat_14, t.text);
+  lv_obj_t* h = label(body, tr("On the SD card (" SYX_DIR ")"), &lv_font_montserrat_14, t.text);
   lv_obj_set_style_pad_top(h, 6, 0);
   folder.clear();
   fileRows(body);

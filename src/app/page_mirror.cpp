@@ -3,6 +3,7 @@
 
 #include "mirror.h"
 #include "ui_priv.h"
+#include "i18n.h"
 
 using namespace ui;
 
@@ -118,8 +119,8 @@ void ui::mirrorPage(lv_obj_t* page) {
   }
   lv_obj_add_event_cb(img, gone, LV_EVENT_DELETE, 0);
 
-  waiting = label(box, devText("Waiting for the FM-1's screen.\n\nIt needs a Big Screen firmware\n"
-                                "(the Hub's bigscreen tag).")
+  waiting = label(box, devText(tr("Waiting for the FM-1's screen.\n\nIt needs a Big Screen firmware\n"
+                                "(the Hub's bigscreen tag)."))
                             .c_str(),
                   &lv_font_montserrat_14, t.dim);
   lv_obj_set_width(waiting, SIDE - 4);

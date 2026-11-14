@@ -12,6 +12,7 @@
 #include "jobs.h"
 #include "midi.h"
 #include "ui_priv.h"
+#include "i18n.h"
 
 using namespace ui;
 
@@ -24,6 +25,9 @@ static Source source = SD;
 static bool sourceChosen, hubAsked;
 static int sortBy = NEWEST;
 static std::string kindFilter;  // "": all
+// the search (its page: searchPage): the words a firmware's name, author, kind or file must all have, in either list
+// ("": no search). On the SD card, a search is of all its folders
+static std::string query;
 // the machines a firmware can be for (an SMK-37 package says which model), and which the lists show: the Hub's, the
 // one on the hub until another is picked (-1); the SD card's, all (-1) until one is picked
 enum Machine { FM1,
@@ -64,6 +68,40 @@ static Upd upd;
 static Firmware updTo;
 
 static void detailPage(lv_obj_t* page);
+static void searchPage(lv_obj_t* page);
+
+// a has b in it, whatever the case
+static bool hasText(const char* a, const char* b, size_t n) {
+  for (; *a; a++) {
+    if (!strncasecmp(a, b, n)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// a firmware has every word of the search: in its name, its author, its file's name or one of its kinds
+static bool found(const FwList& l, const FwItem& f) {
+  const char* q = query.c_str();
+  while (*q) {
+    while (*q == ' ') {
+      q++;
+    }
+    size_t n = strcspn(q, " ");
+    if (!n) {
+      break;
+    }
+    bool in = hasText(l.str(f.name), q, n) || hasText(l.str(f.author), q, n) || hasText(l.str(f.file), q, n);
+    for (size_t k = 0; !in && k < l.kinds.size(); k++) {
+      in = f.kinds & 1u << k && hasText(l.kinds[k].c_str(), q, n);
+    }
+    if (!in) {
+      return false;
+    }
+    q += n;
+  }
+  return true;
+}
 
 // the color of a kind
 static uint32_t kindColor(const std::string& k) {
@@ -142,11 +180,18 @@ static std::vector<uint32_t> shown() {
   for (size_t i = 0; i < l.size(); i++) {
     const FwItem& f = l[i];
     const char* file = l.str(f.file);
-    if (source == SD && strncmp(file, sdFolder.c_str(), sdFolder.size())) {
+    const bool searching = !query.empty();
+    if (source == SD && !searching && strncmp(file, sdFolder.c_str(), sdFolder.size())) {
       continue;  // (not in the folder shown)
     }
     there = true;
     if (machine >= 0 && machineOf(l.str(f.product)) != machine) {
+      continue;
+    }
+    if (searching) {  // (a search: the ones found, from all the folders, and no folders)
+      if (found(l, f) && (source == SD || kindFilter.empty() || f.kinds & kind)) {
+        v.push_back(i);
+      }
       continue;
     }
     if (const char* slash = source == SD ? strchr(file + sdFolder.size(), '/') : 0) {  // in a folder in it
@@ -181,7 +226,7 @@ static std::vector<uint32_t> shown() {
   if (source == SD) {
     std::sort(folders.begin(), folders.end(), [](const Folder& a, const Folder& b) { return strcasecmp(a.name.c_str(), b.name.c_str()) < 0; });
     std::vector<uint32_t> r;
-    if (!sdFolder.empty()) {
+    if (!sdFolder.empty() && query.empty()) {
       r.push_back(ROW_UP);
     }
     for (size_t i = 0; i < folders.size(); i++) {
@@ -275,8 +320,8 @@ static void fillSlot(Slot& s, int at) {
   if (source == SD && (r == ROW_UP || r & ROW_FOLDER)) {
     std::string name, sub;
     if (r == ROW_UP) {
-      name = LV_SYMBOL_UP "  Back";
-      sub = "In " FW_DIR "/" + sdFolder.substr(0, sdFolder.size() - 1);
+      name = tr(LV_SYMBOL_UP "  Back");
+      sub = tr("In " FW_DIR "/") + sdFolder.substr(0, sdFolder.size() - 1);
     } else {
       const Folder& f = folders[r & ~ROW_FOLDER];
       name = LV_SYMBOL_DIRECTORY "  " + f.name;
@@ -299,7 +344,7 @@ static void fillSlot(Slot& s, int at) {
     sub += (sub.empty() ? "v" : "  v") + std::string(l.str(f.version));
   }
   if (sub.empty()) {
-    sub = *l.str(f.product) ? l.str(f.product) : "not a firmware package";
+    sub = *l.str(f.product) ? l.str(f.product) : tr("not a firmware package");
   }
   lv_label_set_text(s.sub, sub.c_str());
   const char* kind = "";
@@ -341,7 +386,7 @@ static void place() {
 }
 
 static void showCounts() {
-  const char* names[] = {"SD card", "Hub"};
+  const char* names[] = {tr("SD card"), "Hub"};
   size_t counts[] = {catalog::sd.size(), (size_t)std::count_if(catalog::hub.items.begin(), catalog::hub.items.end(), forDevice)};
   for (int i = 0; i < 2; i++) {
     char s[32];
@@ -364,19 +409,21 @@ static void fillList() {
     lv_obj_set_width(l, LV_PCT(100));
     lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_pad_all(l, 12, 0);
-    if (source == SD && hal::sd() && !catalog::sd.empty()) {
-      lv_label_set_text(l, "None for that machine on the SD card.");
+    if (!query.empty() && !srcList().empty()) {
+      lv_label_set_text_fmt(l, tr("Nothing here matches \"%s\"."), query.c_str());
+    } else if (source == SD && hal::sd() && !catalog::sd.empty()) {
+      lv_label_set_text(l, tr("None for that machine on the SD card."));
     } else if (source == SD) {
-      lv_label_set_text(l, hal::sd() ? "No firmwares in /fm1 on the SD card. Save some from the Hub, or copy .fwsc files there (in folders too)."
-                                     : "No SD card.");
+      lv_label_set_text(l, hal::sd() ? tr("No firmwares in /fm1 on the SD card. Save some from the Hub, or copy .fwsc files there (in folders too).")
+                                     : tr("No SD card."));
     } else if (!settings.ssid[0]) {
-      lv_label_set_text(l, "Pick a Wi-Fi network in Settings to get the Firmware Hub's list.");
-      lv_obj_t* b = button(list, LV_SYMBOL_WIFI "  Wi-Fi settings", wifiSettings);
+      lv_label_set_text(l, tr("Pick a Wi-Fi network in Settings to get the Firmware Hub's list."));
+      lv_obj_t* b = button(list, tr(LV_SYMBOL_WIFI "  Wi-Fi settings"), wifiSettings);
       lv_obj_set_pos(b, 12, 60);
     } else if (!jobs::running) {
-      lv_label_set_text(l, !kindFilter.empty()    ? "None of that kind."
-                           : catalog::hub.empty() ? "Nothing yet: tap " LV_SYMBOL_REFRESH " to get the list."
-                                                  : "None for that machine yet.");
+      lv_label_set_text(l, !kindFilter.empty()    ? tr("None of that kind.")
+                           : catalog::hub.empty() ? tr("Nothing yet: tap " LV_SYMBOL_REFRESH " to get the list.")
+                                                  : tr("None for that machine yet."));
     }
     return;
   }
@@ -443,10 +490,16 @@ static void showStatus() {
   std::string s;
   if (busy) {
     s = jobs::status();
+  } else if (!query.empty()) {
+    size_t n = 0;
+    for (uint32_t r : rows) {
+      n += !(source == SD && (r == ROW_UP || r & ROW_FOLDER));
+    }
+    s = std::to_string(n) + tr(" found for \"") + query + "\"";
   } else if (source == SD) {
-    s = hal::sd() ? std::to_string(catalog::sd.size()) + " in /fm1 on the SD card" : "No SD card";
+    s = hal::sd() ? std::to_string(catalog::sd.size()) + tr(" in /fm1 on the SD card") : tr("No SD card");
   } else if (!catalog::hubUpdated.empty()) {
-    s = "List from " + catalog::hubUpdated;
+    s = tr("List from ") + catalog::hubUpdated;
   }
   lv_label_set_text(status, s.c_str());
   lv_obj_set_style_text_color(status, color(t.dim), 0);
@@ -504,8 +557,21 @@ static void menuStyle(lv_obj_t* dd) {
   lv_obj_set_style_text_font(dd, &lv_font_montserrat_12, 0);
 }
 
+static void openSearch(lv_event_t*) {
+  go(searchPage);
+}
+
+// the search's button, in the page's top row: lit while there's a search (the row under the list says which)
+static void searchButton(lv_obj_t* row) {
+  lv_obj_t* b = button(row, SYMBOL_SEARCH, openSearch);
+  lv_obj_set_size(b, 36, 30);
+  if (!query.empty()) {
+    lv_obj_add_state(b, LV_STATE_CHECKED);
+  }
+}
+
 static lv_obj_t* machineMenu(lv_obj_t* row) {
-  std::string o = source == SD ? "All" : "";
+  std::string o = source == SD ? tr("All") : "";
   for (int i = 0; i < MACHINES; i++) {
     o += (o.empty() ? "" : "\n") + std::string(MACHINE_NAMES[i]);
   }
@@ -547,6 +613,7 @@ void ui::firmwarePage(lv_obj_t* page) {
       lv_obj_add_state(b, LV_STATE_CHECKED);
     }
   }
+  searchButton(head);
   if (source == HUB) {
     refresh = button(head, LV_SYMBOL_REFRESH, startHub);
     lv_obj_set_size(refresh, 40, 30);
@@ -573,7 +640,7 @@ void ui::firmwarePage(lv_obj_t* page) {
       }
     }
     std::sort(kinds.begin(), kinds.end());
-    std::string o = "All kinds";
+    std::string o = tr("All kinds");
     int at = 0;
     for (size_t i = 0; i < kinds.size(); i++) {
       o += "\n" + kinds[i];
@@ -586,7 +653,7 @@ void ui::firmwarePage(lv_obj_t* page) {
     }
     for (int i = 0; i < 2; i++) {
       lv_obj_t* dd = lv_dropdown_create(opts);
-      lv_dropdown_set_options(dd, i ? "Newest\nA-Z" : o.c_str());
+      lv_dropdown_set_options(dd, i ? tr("Newest\nA-Z") : o.c_str());
       lv_dropdown_set_selected(dd, i ? sortBy : at);
       lv_obj_set_height(dd, 30);
       lv_obj_set_flex_grow(dd, 1);
@@ -626,6 +693,64 @@ void ui::firmwarePage(lv_obj_t* page) {
   jobDone = hubDone;
 }
 
+// ------------------------------------------------------------------------------------------- the search ---
+// the words to look for, on a keyboard (all of the screen), and how many firmwares have them as they're typed. OK, or
+// back: the list, with only those
+static lv_obj_t *searchText, *searchCount;
+
+static void searchShow() {
+  size_t n = 0;
+  for (uint32_t r : shown()) {
+    n += !(source == SD && (r == ROW_UP || r & ROW_FOLDER));
+  }
+  if (query.empty()) {
+    lv_label_set_text(searchCount, tr("A name, an author or a kind."));
+  } else {
+    lv_label_set_text_fmt(searchCount, n == 1 ? "%u firmware" : "%u firmwares", (unsigned)n);
+  }
+}
+
+static void searchTyped(lv_event_t*) {
+  query = lv_textarea_get_text(searchText);
+  searchShow();
+}
+
+static void searchClear(lv_event_t*) {
+  lv_textarea_set_text(searchText, "");  // (and searchTyped: its text changed)
+}
+
+static void searchDone(lv_event_t*) {
+  go(firmwarePage);
+}
+
+static void searchPage(lv_obj_t* page) {
+  const Theme& t = theme();
+  fullscreen(true);
+  fresh = true;  // (another list: from its top)
+  header(page, source == SD ? tr("Search the SD card") : tr("Search the Hub"), firmwarePage);
+  lv_obj_t* r = box(page, LV_FLEX_FLOW_ROW);
+  lv_obj_set_style_pad_column(r, 4, 0);
+  searchText = lv_textarea_create(r);
+  lv_textarea_set_one_line(searchText, true);
+  lv_textarea_set_max_length(searchText, 24);
+  lv_textarea_set_placeholder_text(searchText, tr("search"));
+  lv_textarea_set_text(searchText, query.c_str());
+  lv_obj_set_flex_grow(searchText, 1);
+  lv_obj_add_state(searchText, LV_STATE_FOCUSED);
+  lv_obj_add_event_cb(searchText, searchTyped, LV_EVENT_VALUE_CHANGED, 0);
+  lv_obj_t* x = button(r, LV_SYMBOL_CLOSE, searchClear);
+  lv_obj_set_size(x, 40, 36);
+  searchCount = line(page, "", &lv_font_montserrat_12, t.dim);
+  lv_obj_set_width(searchCount, LV_PCT(100));
+  lv_obj_t* kb = lv_keyboard_create(page);
+  lv_obj_set_size(kb, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_flex_grow(kb, 1);
+  lv_keyboard_set_textarea(kb, searchText);
+  lv_obj_add_event_cb(kb, searchDone, LV_EVENT_READY, 0);
+  lv_obj_add_event_cb(kb, searchDone, LV_EVENT_CANCEL, 0);
+  searchShow();
+}
+
 // ------------------------------------------------------------------------------------------ the details ---
 static void showProgress() {
   int k = jobs::kind;
@@ -663,7 +788,7 @@ static void updChecked() {
   int i = sdIndex(sel.file), h = i < 0 ? -1 : catalog::hubVersionOf(catalog::hub, catalog::sd, i);
   if (h < 0) {
     upd = UPD_NONE;
-    toast("It isn't in the Hub's list.");
+    toast(tr("It isn't in the Hub's list."));
     return;
   }
   const FwItem &s = catalog::sd[i], &x = catalog::hub[h];
@@ -671,7 +796,7 @@ static void updChecked() {
                                          : s.flags & FwItem::FROM_HUB && s.line == x.line;
   if (same) {
     upd = UPD_NEWEST;
-    toast("It's the newest one.");
+    toast(tr("It's the newest one."));
     return;
   }
   upd = UPD_NEWER;
@@ -691,9 +816,9 @@ static void downloaded() {
       sel = catalog::details(catalog::sd, i);
       updFor = sel.file;
       upd = UPD_NEWEST;
-      toast(("Updated" + (sel.version.empty() ? std::string(".") : " to v" + sel.version + ".")).c_str());
+      toast((tr("Updated") + (sel.version.empty() ? std::string(".") : tr(" to v") + sel.version + ".")).c_str());
     } else {
-      toast(devText(jobs::ok ? "Updated." : jobs::error).c_str(), !jobs::ok);
+      toast(devText(jobs::ok ? tr("Updated.") : jobs::error).c_str(), !jobs::ok);
       if (jobs::ok) {
         go(firmwarePage);
         return;
@@ -707,9 +832,9 @@ static void downloaded() {
   }
   if (jobs::ok) {
     bool renamed = jobs::saved != sel.file;
-    toast(jobs::kind == jobs::INSTALL ? "Installed."
-          : renamed                   ? ("Saved to the SD card as " + jobs::saved + ".").c_str()
-                                      : "Saved to the SD card.");
+    toast(jobs::kind == jobs::INSTALL ? tr("Installed.")
+          : renamed                   ? (tr("Saved to the SD card as ") + jobs::saved + ".").c_str()
+                                      : tr("Saved to the SD card."));
     sel.file = jobs::saved;
     sel.onSd = true;
   } else {
@@ -720,7 +845,7 @@ static void downloaded() {
 
 static void save(lv_event_t*) {
   if (!jobs::download(sel)) {
-    toast("Busy: try again in a moment.", true);
+    toast(tr("Busy: try again in a moment."), true);
   }
   showProgress();
 }
@@ -732,7 +857,7 @@ static void update(lv_event_t*) {
   }
   bool started = upd == UPD_NEWER ? jobs::updateFirmware(updTo, sel.file) : jobs::hubList();
   if (!started) {
-    toast("Busy: try again in a moment.", true);
+    toast(tr("Busy: try again in a moment."), true);
     return;
   }
   if (upd != UPD_NEWER) {
@@ -743,13 +868,13 @@ static void update(lv_event_t*) {
 
 static void install(lv_event_t* e) {
   lv_obj_t* l = lv_obj_get_child((lv_obj_t*)lv_event_get_target(e), 0);
-  const char* sure = hasBackup() ? "Sure? Tap again" : "No backup. Sure?";
+  const char* sure = hasBackup() ? tr("Sure? Tap again") : tr("No backup. Sure?");
   if (strcmp(lv_label_get_text(l), sure)) {
     lv_label_set_text(l, sure);
     return;
   }
   if (!jobs::install(sel)) {
-    toast("Busy: try again in a moment.", true);
+    toast(tr("Busy: try again in a moment."), true);
   }
   showProgress();
 }
@@ -757,17 +882,17 @@ static void install(lv_event_t* e) {
 static void erase(lv_event_t* e) {
   lv_obj_t* b = (lv_obj_t*)lv_event_get_target(e);
   lv_obj_t* l = lv_obj_get_child(b, 0);
-  if (strcmp(lv_label_get_text(l), "Sure?")) {
-    lv_label_set_text(l, "Sure?");  // a second tap deletes it
+  if (strcmp(lv_label_get_text(l), tr("Sure?"))) {
+    lv_label_set_text(l, tr("Sure?"));  // a second tap deletes it
     return;
   }
   std::string p = catalog::path(std::string(FW_DIR "/") + sel.file);
   if (remove(p.c_str())) {
-    toast("Can't delete it.", true);
+    toast(tr("Can't delete it."), true);
     return;
   }
   catalog::scanSd();
-  toast("Deleted.");
+  toast(tr("Deleted."));
   go(firmwarePage);
 }
 
@@ -778,7 +903,7 @@ static void detailPage(lv_obj_t* page) {
   lv_obj_set_style_pad_row(body, 6, 0);
   lv_obj_set_style_pad_hor(body, 4, 0);
 
-  std::string meta = sel.author.empty() ? "" : "by " + sel.author;
+  std::string meta = sel.author.empty() ? "" : tr("by ") + sel.author;
   if (!sel.version.empty()) {
     meta += (meta.empty() ? "v" : "   v") + sel.version;
   }
@@ -800,11 +925,11 @@ static void detailPage(lv_obj_t* page) {
     chip(chips, "beta", t.knob[1]);
   }
   if (sel.onSd) {
-    chip(chips, LV_SYMBOL_SD_CARD " on SD", t.accent);
+    chip(chips, tr(LV_SYMBOL_SD_CARD " on SD"), t.accent);
   }
 
   std::string facts;
-  facts += kb(sel.size) + "   " + (sel.product.empty() ? "not a firmware package" : sel.product);
+  facts += kb(sel.size) + "   " + (sel.product.empty() ? tr("not a firmware package") : sel.product);
   lv_obj_t* f = label(body, facts.c_str(), &lv_font_montserrat_12, t.dim);
   lv_label_set_long_mode(f, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(f, LV_PCT(100));
@@ -816,11 +941,11 @@ static void detailPage(lv_obj_t* page) {
     lv_obj_t* br = box(body, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(br, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_column(br, 6, 0);
-    lv_obj_t* bl = label(br, devText(LV_SYMBOL_WARNING " No backup of the FM-1 on the SD card yet: one lets you go back.").c_str(),
+    lv_obj_t* bl = label(br, devText(tr(LV_SYMBOL_WARNING " No backup of the FM-1 on the SD card yet: one lets you go back.")).c_str(),
                          &lv_font_montserrat_12, t.knob[1]);
     lv_label_set_long_mode(bl, LV_LABEL_LONG_WRAP);
     lv_obj_set_flex_grow(bl, 1);
-    button(br, LV_SYMBOL_SAVE " Back up", [](lv_event_t*) { go(SOUNDS, backupPage); });
+    button(br, tr(LV_SYMBOL_SAVE " Back up"), [](lv_event_t*) { go(SOUNDS, backupPage); });
   }
 
   if (!sel.what.empty()) {
@@ -829,13 +954,13 @@ static void detailPage(lv_obj_t* page) {
     lv_obj_set_width(w, LV_PCT(100));
   } else if (!sel.hub && !sel.stock && source == SD) {
     bool older = updFor == sel.file && upd == UPD_NEWER;
-    std::string v = updTo.version.empty() ? "a newer one" : "v" + updTo.version;
-    label(body, older ? ("An older one: the Hub has " + v + ".").c_str() : "Not in the Hub's list.", &lv_font_montserrat_14,
+    std::string v = updTo.version.empty() ? tr("a newer one") : "v" + updTo.version;
+    label(body, older ? (tr("An older one: the Hub has ") + v + ".").c_str() : tr("Not in the Hub's list."), &lv_font_montserrat_14,
           older ? t.knob[1] : t.dim);
   }
   if (sel.keyboard || sel.mouse) {
-    std::string h = std::string(LV_SYMBOL_USB "  Uses a USB ") + (sel.keyboard && sel.mouse ? "keyboard and mouse" : sel.keyboard ? "keyboard"
-                                                                                                                                  : "mouse");
+    std::string h = std::string(tr(LV_SYMBOL_USB "  Uses a USB ")) + (sel.keyboard && sel.mouse ? tr("keyboard and mouse") : sel.keyboard ? tr("keyboard")
+                                                                                                                                  : tr("mouse"));
     label(body, h.c_str(), &lv_font_montserrat_14, t.knob[2]);
   }
 
@@ -843,14 +968,14 @@ static void detailPage(lv_obj_t* page) {
   actions = box(page, LV_FLEX_FLOW_ROW);
   lv_obj_set_style_pad_column(actions, 6, 0);
   if (source == HUB && !sel.onSd) {
-    lv_obj_t* b = button(actions, LV_SYMBOL_DOWNLOAD "  Save to SD", save);
+    lv_obj_t* b = button(actions, tr(LV_SYMBOL_DOWNLOAD "  Save to SD"), save);
     lv_obj_set_flex_grow(b, 1);
     if (!hal::sd()) {
       lv_obj_add_state(b, LV_STATE_DISABLED);
     }
   }
   if (source == SD) {
-    lv_obj_t* b = button(actions, LV_SYMBOL_TRASH "  Delete", erase);
+    lv_obj_t* b = button(actions, tr(LV_SYMBOL_TRASH "  Delete"), erase);
     lv_obj_set_flex_grow(b, 1);
     // a newer one from the Hub, in its place (a package, with Wi-Fi to get it)
     if (updFor != sel.file) {
@@ -858,10 +983,10 @@ static void detailPage(lv_obj_t* page) {
       upd = UPD_ASK;
     }
     if (!sel.product.empty() && settings.ssid[0]) {
-      std::string text = upd == UPD_NEWER    ? LV_SYMBOL_DOWNLOAD "  Get " + (updTo.version.empty() ? std::string("newer") : "v" + updTo.version)
-                         : upd == UPD_NEWEST ? std::string("Newest")
-                         : upd == UPD_NONE   ? std::string("Not in Hub")
-                                             : LV_SYMBOL_REFRESH "  Update?";
+      std::string text = upd == UPD_NEWER    ? tr(LV_SYMBOL_DOWNLOAD "  Get ") + (updTo.version.empty() ? std::string(tr("newer")) : "v" + updTo.version)
+                         : upd == UPD_NEWEST ? std::string(tr("Newest"))
+                         : upd == UPD_NONE   ? std::string(tr("Not in Hub"))
+                                             : tr(LV_SYMBOL_REFRESH "  Update?");
       lv_obj_t* u = button(actions, text.c_str(), update);
       lv_obj_set_flex_grow(u, 1);
       if (upd == UPD_NEWEST || upd == UPD_NONE) {
@@ -874,16 +999,16 @@ static void detailPage(lv_obj_t* page) {
   const Fm1Id* id = fm1::known(fm1::current());
   std::string model = sel.product.substr(0, sel.product.find('_'));
   bool smk = isSmk(sel.product.c_str());
-  const char* why = !id                                                     ? (smk ? "Install: no SMK" : "Install: no FM-1")
-                    : sel.product.empty()                                   ? "Not a firmware package"
-                    : !id->ota() && !sameHardware(model.c_str(), id->model) ? "Not for this device"
+  const char* why = !id                                                     ? (smk ? tr("Install: no SMK") : tr("Install: no FM-1"))
+                    : sel.product.empty()                                   ? tr("Not a firmware package")
+                    : !id->ota() && !sameHardware(model.c_str(), id->model) ? tr("Not for this device")
                     // (an update loader's name can be another firmware's: one saying SMK-37 is one, so only the
                     // SMK-37's go on it; one saying FM-1 may be an SMK-37 with an FM-1 firmware's loader)
-                    : id->ota() && isSmk(id->model) && !smk    ? "Not for this device"
-                    : source == HUB && !sel.onSd && !hal::sd() ? "Install: no SD card"
+                    : id->ota() && isSmk(id->model) && !smk    ? tr("Not for this device")
+                    : source == HUB && !sel.onSd && !hal::sd() ? tr("Install: no SD card")
                                                                : 0;
-  lv_obj_t* inst = button(actions, why ? why : id->ota() ? "Finish install"
-                                                         : "Install",
+  lv_obj_t* inst = button(actions, why ? why : id->ota() ? tr("Finish install")
+                                                         : tr("Install"),
                           why ? 0 : install);
   lv_obj_set_flex_grow(inst, 1);
   if (why) {

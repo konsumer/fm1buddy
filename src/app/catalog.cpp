@@ -16,6 +16,7 @@
 
 #include "fm1.h"
 #include "hal.h"
+#include "i18n.h"
 
 FwList catalog::hub, catalog::sd;
 std::string catalog::hubUpdated;
@@ -382,7 +383,7 @@ static int hubToLines(JsonFile& in, FILE* out, std::string& updated) {
           f.name += " V" + std::to_string(atoi(f.product.c_str() + 5));  // "M-VAVE stock V15"
         }
         f.author = "M-VAVE";
-        f.what = "The firmware the FM-1 came with: put it back to how it was.";
+        f.what = tr("The firmware the FM-1 came with: put it back to how it was.");
         f.kinds = {"stock"};
         f.stock = true;
         if (usable(f)) {
@@ -409,7 +410,7 @@ static int hubToLines(JsonFile& in, FILE* out, std::string& updated) {
 bool catalog::parseHub(FwList& out, std::string& updated, std::string& err) {
   FILE* json = fopen(path(HUB_CACHE).c_str(), "r");
   if (!json) {
-    err = "The Hub's list isn't on the SD card yet.";
+    err = tr("The Hub's list isn't on the SD card yet.");
     return false;
   }
   std::string p = path(HUB_LIST), part = p + ".part";
@@ -417,7 +418,7 @@ bool catalog::parseHub(FwList& out, std::string& updated, std::string& err) {
   if (!f) {
     fclose(json);
     hal::log("hub: can't write %s.part (errno %d)", HUB_LIST, errno);
-    err = "Can't write the Hub's list to the SD card.";
+    err = tr("Can't write the Hub's list to the SD card.");
     return false;
   }
   fprintf(f, "%s\t", LIST_HEAD);
@@ -437,25 +438,25 @@ bool catalog::parseHub(FwList& out, std::string& updated, std::string& err) {
   ok = !fclose(f) && ok;
   if (n < 0) {
     remove(part.c_str());
-    err = "The Hub's list didn't read.";
+    err = tr("The Hub's list didn't read.");
     return false;
   }
   if (!ok) {
     hal::log("hub: writing %s.part failed (errno %d)", HUB_LIST, errno);
     remove(part.c_str());
-    err = "Can't write the Hub's list to the SD card.";
+    err = tr("Can't write the Hub's list to the SD card.");
     return false;
   }
   remove(p.c_str());
   if (rename(part.c_str(), p.c_str())) {
     hal::log("hub: can't rename %s.part (errno %d)", HUB_LIST, errno);
-    err = "Can't write the Hub's list to the SD card.";
+    err = tr("Can't write the Hub's list to the SD card.");
     return false;
   }
   remove(path(HUB_CACHE).c_str());  // (only the list is kept)
   hal::log("hub: %d firmwares", n);
   if (!loadHub(out, updated)) {
-    err = "The Hub's list on the SD card didn't read.";
+    err = tr("The Hub's list on the SD card didn't read.");
     return false;
   }
   return true;
@@ -535,8 +536,8 @@ Firmware catalog::details(const FwList& l, size_t i) {
       fclose(h);
     }
   } else if (int o = official(f.sha256.c_str()); o >= 0) {
-    f.what = OFFICIAL[o].open ? "M-VAVE's open firmware: a groovebox, with a web editor (open.m-vave.com)."
-                              : "The firmware the FM-1 came with: put it back to how it was.";
+    f.what = OFFICIAL[o].open ? tr("M-VAVE's open firmware: a groovebox, with a web editor (open.m-vave.com).")
+                              : tr("The firmware the FM-1 came with: put it back to how it was.");
   }
   return f;
 }

@@ -11,6 +11,7 @@
 #include "hal.h"
 #include "midi.h"
 #include "ui_priv.h"
+#include "i18n.h"
 
 using namespace ui;
 
@@ -364,7 +365,7 @@ void ui::touchPage(lv_obj_t* page) {
   lv_obj_set_flex_grow(gap, 1);
   lv_obj_set_flex_align(gap, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   if (!midi::routing) {
-    lv_obj_t* r = button(gap, "Routing off", routingOn);
+    lv_obj_t* r = button(gap, tr("Routing off"), routingOn);
     lv_obj_set_height(r, 26);
     lv_obj_set_style_text_color(r, color(t.knob[1]), 0);
     lv_obj_set_style_pad_ver(r, 2, 0);
@@ -552,7 +553,7 @@ static void heading(lv_obj_t* body, const char* text) {
 static void touchSetupPage(lv_obj_t* page) {
   load();
   const Theme& t = theme();
-  header(page, "Touch controller", touchPage);
+  header(page, tr("Touch controller"), touchPage);
   lv_obj_t* body = scroller(page);
   lv_obj_set_style_pad_row(body, 2, 0);
 
@@ -567,31 +568,31 @@ static void touchSetupPage(lv_obj_t* page) {
     notes += (n > NOTE_LOW ? "\n" : "") + noteName(n);
   }
   for (const char* s : SCALE_NAMES) {
-    scales += (scales.empty() ? "" : "\n") + std::string(s);
+    scales += (scales.empty() ? "" : "\n") + std::string(tr(s));
   }
   for (const char* v : VEL_NAMES) {
-    vels += (vels.empty() ? "" : "\n") + std::string(v);
+    vels += (vels.empty() ? "" : "\n") + std::string(tr(v));
   }
   auto noteSel = [](int n) { return n < NOTE_LOW ? 0 : n > NOTE_HIGH ? NOTE_HIGH - NOTE_LOW
                                                                      : n - NOTE_LOW; };
 
-  pickRow(body, "MIDI channel", chans, cfg.ch % 16, CH);
+  pickRow(body, tr("MIDI channel"), chans, cfg.ch % 16, CH);
   heading(body, "X/Y");
-  pickRow(body, "Finger 1: X", ccs, cfg.cc[0][0] & 127, CC1X);
-  pickRow(body, "Finger 1: Y", ccs, cfg.cc[0][1] & 127, CC1Y);
-  pickRow(body, "Finger 2: X", ccs, cfg.cc[1][0] & 127, CC2X);
-  pickRow(body, "Finger 2: Y", ccs, cfg.cc[1][1] & 127, CC2Y);
-  switchRow(body, "Back to the middle on let go", &cfg.snap);
-  switchRow(body, "X plays notes", &cfg.notes);
-  pickRow(body, "Scale", scales, cfg.scale % SCALES, SCALE);
-  pickRow(body, "Lowest note", notes, noteSel(cfg.root), ROOT);
+  pickRow(body, tr("Finger 1: X"), ccs, cfg.cc[0][0] & 127, CC1X);
+  pickRow(body, tr("Finger 1: Y"), ccs, cfg.cc[0][1] & 127, CC1Y);
+  pickRow(body, tr("Finger 2: X"), ccs, cfg.cc[1][0] & 127, CC2X);
+  pickRow(body, tr("Finger 2: Y"), ccs, cfg.cc[1][1] & 127, CC2Y);
+  switchRow(body, tr("Back to the middle on let go"), &cfg.snap);
+  switchRow(body, tr("X plays notes"), &cfg.notes);
+  pickRow(body, tr("Scale"), scales, cfg.scale % SCALES, SCALE);
+  pickRow(body, tr("Lowest note"), notes, noteSel(cfg.root), ROOT);
   heading(body, "Pads");
-  pickRow(body, "First pad", notes, noteSel(cfg.padBase), PADBASE);
-  pickRow(body, "Velocity", vels, cfg.vel % VELS, VEL);
+  pickRow(body, tr("First pad"), notes, noteSel(cfg.padBase), PADBASE);
+  pickRow(body, tr("Velocity"), vels, cfg.vel % VELS, VEL);
   lv_obj_t* l = label(body,
-                      "It plays as the Touch device: like a controller on the hub, so the mapping (from touch ...) "
+                      tr("It plays as the Touch device: like a controller on the hub, so the mapping (from touch ...) "
                       "and the clock, arpeggiator and chords work on it. Touch size needs a panel that says how much "
-                      "finger it feels: if yours doesn't, it plays at 100.",
+                      "finger it feels: if yours doesn't, it plays at 100."),
                       &lv_font_montserrat_12, t.dim);
   lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(l, LV_PCT(100));

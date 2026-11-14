@@ -46,6 +46,9 @@ bool load(const char* key, void* p, size_t n);
 void save(const char* key, const void* p, size_t n);
 
 void backlight(uint8_t percent);
+// the picture a half turn round, and the touch panel with it: for the board the other way up, its USB port on the other
+// side (Settings > Flip screen). What's on screen is drawn again by the app (it asks for it)
+void flip(bool on);
 // the battery socket's voltage in mV (0: the board can't tell). With no battery, it's the charger's (about 4.1 V)
 uint32_t batteryMv();
 // the board off until the screen is touched (deep sleep): then it starts again, from nothing (the simulator only says

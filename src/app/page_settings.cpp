@@ -13,6 +13,7 @@
 #include "midi.h"
 #include "uboot.h"
 #include "ui_priv.h"
+#include "i18n.h"
 
 using namespace ui;
 
@@ -22,6 +23,7 @@ static lv_obj_t *ta, *msg, *scanBtn, *scanSpin, *nets;
 static void themePage(lv_obj_t* page);
 static void startOnPage(lv_obj_t* page);
 static void sleepPage(lv_obj_t* page);
+static void languagePage(lv_obj_t* page);
 static void computerPage(lv_obj_t* page);
 static void aboutPage(lv_obj_t* page);
 static void passwordPage(lv_obj_t* page);
@@ -55,6 +57,14 @@ static void brightness(lv_event_t* e) {
   }
 }
 
+// the picture a half turn round (the board the other way up: its USB port on the other side). Kept as "flip"
+static void flipScreen(lv_event_t* e) {
+  uint8_t on = lv_obj_has_state((lv_obj_t*)lv_event_get_target(e), LV_STATE_CHECKED);
+  hal::save("flip", &on, 1);
+  hal::flip(on);
+  lv_obj_invalidate(lv_screen_active());  // (all of it again, the other way up)
+}
+
 static void hubAuto(lv_event_t* e) {
   settings.hubAuto = lv_obj_has_state((lv_obj_t*)lv_event_get_target(e), LV_STATE_CHECKED);
   settingsSave();
@@ -81,12 +91,12 @@ static void updateDone() {
     if (!jobs::ok) {
       toast(jobs::error.c_str(), true);
     } else if (!offered) {
-      toast("fm1buddy is up to date.");
+      toast(tr("fm1buddy is up to date."));
     }
     showUpdate = true;
   } else if (jobs::kind == jobs::UPDATE) {
     if (jobs::ok) {
-      toast(("Installed " + jobs::updateTag + ": restarting...").c_str());
+      toast((tr("Installed ") + jobs::updateTag + tr(": restarting...")).c_str());
       lv_timer_set_repeat_count(lv_timer_create(restartNow, 2000, 0), 1);
       return;
     }
@@ -101,19 +111,19 @@ static std::string updateWork(int& pct) {
   pct = -1;
   switch ((int)jobs::step) {
     case jobs::JOINING:
-      return "Joining Wi-Fi...";
+      return tr("Joining Wi-Fi...");
     case jobs::FETCHING:
       if (jobs::kind == jobs::CHECK_UPDATE) {
-        return "Checking...";
+        return tr("Checking...");
       }
       pct = t ? (int)((uint64_t)d * 100 / t) : 0;
-      return "Downloading " + std::to_string(pct) + "%";
+      return tr("Downloading ") + std::to_string(pct) + "%";
     case jobs::UPDATING:
       pct = t ? (int)((uint64_t)d * 100 / t) : 0;
       // (written: the board checks it all before it starts from it, which takes a while)
-      return t && d >= t ? std::string("Finishing...") : "Installing " + std::to_string(pct) + "%";
+      return t && d >= t ? std::string(tr("Finishing...")) : tr("Installing ") + std::to_string(pct) + "%";
   }
-  return "Checking...";
+  return tr("Checking...");
 }
 
 static void updateTick() {
@@ -145,7 +155,7 @@ static void updateTapped(lv_event_t*) {
   }
   bool ok = offered ? jobs::update() : jobs::checkUpdate();
   if (!ok) {
-    toast("Busy: try again in a moment.", true);
+    toast(tr("Busy: try again in a moment."), true);
   }
   updateTick();
 }
@@ -153,9 +163,9 @@ static void updateTapped(lv_event_t*) {
 static void updateRow(lv_obj_t* body) {
   const Theme& t = theme();
   lv_obj_t* r = listRow(body, 0, 0);
-  lv_obj_t* l = label(r, LV_SYMBOL_DOWNLOAD "  Update", &lv_font_montserrat_16, t.text);
+  lv_obj_t* l = label(r, tr(LV_SYMBOL_DOWNLOAD "  Update"), &lv_font_montserrat_16, t.text);
   lv_obj_set_flex_grow(l, 1);
-  std::string text = offered ? "Download " + jobs::updateTag : std::string("Check for update");
+  std::string text = offered ? tr("Download ") + jobs::updateTag : std::string(tr("Check for update"));
   updBtn = button(r, text.c_str(), updateTapped);
   lv_obj_set_style_min_width(updBtn, 150, 0);  // (the same size as its text changes, so the fill reads right)
   updateTick();
@@ -170,21 +180,21 @@ static void updateRow(lv_obj_t* body) {
 
 void ui::settingsPage(lv_obj_t* page) {
   const Theme& t = theme();
-  header(page, "Settings");
+  header(page, tr("Settings"));
   lv_obj_t* body = scroller(page);
-  menuRow(body, LV_SYMBOL_WIFI "  Wi-Fi", settings.ssid[0] ? settings.ssid : "not set", wifiPage);
-  menuRow(body, LV_SYMBOL_IMAGE "  Theme", t.name, themePage);
-  menuRow(body, LV_SYMBOL_HOME "  Start on", START_NAMES[startPage()], startOnPage);
+  menuRow(body, LV_SYMBOL_WIFI "  Wi-Fi", settings.ssid[0] ? settings.ssid : tr("not set"), wifiPage);
+  menuRow(body, tr(LV_SYMBOL_IMAGE "  Theme"), t.name, themePage);
+  menuRow(body, tr(LV_SYMBOL_HOME "  Start on"), tr(START_NAMES[startPage()]), startOnPage);
   char sl[16];
-  snprintf(sl, sizeof sl, sleepMinutes() ? "after %d min" : "never", sleepMinutes());
-  menuRow(body, LV_SYMBOL_POWER "  Sleep", sl, sleepPage);
+  snprintf(sl, sizeof sl, sleepMinutes() ? tr("after %d min") : tr("never"), sleepMinutes());
+  menuRow(body, tr(LV_SYMBOL_POWER "  Sleep"), sl, sleepPage);
   hal::TouchCal c;
-  menuRow(body, LV_SYMBOL_EDIT "  Calibrate touch", hal::load("touchcal", &c, sizeof c) ? "done" : "", touchCalPage);
+  menuRow(body, tr(LV_SYMBOL_EDIT "  Calibrate touch"), hal::load("touchcal", &c, sizeof c) ? tr("done") : "", touchCalPage);
 
   lv_obj_t* r = listRow(body, 0, 0);
   lv_obj_set_style_pad_right(r, 16, 0);
   lv_obj_set_style_pad_column(r, 18, 0);
-  label(r, LV_SYMBOL_EYE_OPEN "  Light", &lv_font_montserrat_16, t.text);
+  label(r, tr(LV_SYMBOL_EYE_OPEN "  Light"), &lv_font_montserrat_16, t.text);
   lv_obj_t* s = lv_slider_create(r);
   lv_slider_set_range(s, 10, 100);
   lv_slider_set_value(s, settings.brightness, LV_ANIM_OFF);
@@ -193,16 +203,24 @@ void ui::settingsPage(lv_obj_t* page) {
   lv_obj_add_event_cb(s, brightness, LV_EVENT_VALUE_CHANGED, 0);
   lv_obj_add_event_cb(s, brightness, LV_EVENT_RELEASED, 0);
 
-  r = menuRow(body, LV_SYMBOL_REFRESH "  Update Hub list", 0, 0);
+  menuRow(body, tr(LV_SYMBOL_LIST "  Language"), i18n::NAMES[i18n::lang()], languagePage);
+  r = menuRow(body, tr(LV_SYMBOL_LOOP "  Flip screen"), 0, 0);
   lv_obj_t* sw = lv_switch_create(r);
+  if (flipped()) {
+    lv_obj_add_state(sw, LV_STATE_CHECKED);
+  }
+  lv_obj_add_event_cb(sw, flipScreen, LV_EVENT_VALUE_CHANGED, 0);
+
+  r = menuRow(body, tr(LV_SYMBOL_REFRESH "  Update Hub list"), 0, 0);
+  sw = lv_switch_create(r);
   if (settings.hubAuto) {
     lv_obj_add_state(sw, LV_STATE_CHECKED);
   }
   lv_obj_add_event_cb(sw, hubAuto, LV_EVENT_VALUE_CHANGED, 0);
 
-  menuRow(body, LV_SYMBOL_USB "  USB disk", "SD card", diskStartPage);
-  menuRow(body, LV_SYMBOL_USB "  On a computer", hal::computerMidi() ? "USB MIDI" : "Serial port", computerPage);
-  menuRow(body, LV_SYMBOL_SD_CARD "  About", FM1BUDDY_VERSION, aboutPage);
+  menuRow(body, tr(LV_SYMBOL_USB "  USB disk"), tr("SD card"), diskStartPage);
+  menuRow(body, tr(LV_SYMBOL_USB "  On a computer"), hal::computerMidi() ? tr("USB MIDI") : tr("Serial port"), computerPage);
+  menuRow(body, tr(LV_SYMBOL_SD_CARD "  About"), FM1BUDDY_VERSION, aboutPage);
   updateRow(body);
 }
 
@@ -255,7 +273,7 @@ void ui::wifiPage(lv_obj_t* page) {
     lv_obj_t* r = listRow(nets, 0, 0);
     lv_obj_t* l = line(r, (std::string(LV_SYMBOL_OK "  ") + settings.ssid).c_str(), &lv_font_montserrat_16, t.accent);
     lv_obj_set_flex_grow(l, 1);
-    lv_obj_t* b = button(r, "Forget", forget);
+    lv_obj_t* b = button(r, tr("Forget"), forget);
     lv_obj_set_height(b, 30);
   }
   for (size_t i = 0; i < jobs::aps.size(); i++) {
@@ -267,11 +285,11 @@ void ui::wifiPage(lv_obj_t* page) {
     lv_obj_t* l = line(r, a.ssid.c_str(), &lv_font_montserrat_16, t.text);
     lv_obj_set_flex_grow(l, 1);
     char s[24];
-    snprintf(s, sizeof s, "%s%d dBm", a.open ? "open  " : "", a.rssi);
+    snprintf(s, sizeof s, "%s%d dBm", a.open ? tr("open  ") : "", a.rssi);
     label(r, s, &lv_font_montserrat_12, a.rssi > -60 ? t.text : t.dim);
   }
   if (jobs::aps.empty()) {
-    lv_obj_t* l = label(nets, "Tap " LV_SYMBOL_REFRESH " to look for networks. Wi-Fi is only on while the Hub's list or a firmware downloads.",
+    lv_obj_t* l = label(nets, tr("Tap " LV_SYMBOL_REFRESH " to look for networks. Wi-Fi is only on while the Hub's list or a firmware downloads."),
                         &lv_font_montserrat_14, t.dim);
     lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(l, LV_PCT(100));
@@ -290,7 +308,7 @@ static void joined() {
     strncpy(settings.ssid, ssid.c_str(), sizeof settings.ssid - 1);
     strncpy(settings.pass, lv_textarea_get_text(ta), sizeof settings.pass - 1);
     settingsSave();
-    toast("Joined, and saved.");
+    toast(tr("Joined, and saved."));
     go(wifiPage);
   } else {
     lv_label_set_text(msg, devText(jobs::error).c_str());
@@ -309,7 +327,7 @@ static void keys(lv_event_t* e) {
   if (lv_event_get_code(e) == LV_EVENT_CANCEL) {
     go(wifiPage);
   } else if (!jobs::join(ssid.c_str(), lv_textarea_get_text(ta))) {
-    toast("Busy: try again in a moment.", true);
+    toast(tr("Busy: try again in a moment."), true);
   }
 }
 
@@ -328,7 +346,7 @@ static void passwordPage(lv_obj_t* page) {
   ta = lv_textarea_create(r);
   lv_textarea_set_one_line(ta, true);
   lv_textarea_set_password_mode(ta, true);
-  lv_textarea_set_placeholder_text(ta, "password");
+  lv_textarea_set_placeholder_text(ta, tr("password"));
   lv_obj_set_flex_grow(ta, 1);
   lv_obj_add_state(ta, LV_STATE_FOCUSED);
   if (ssid == settings.ssid) {
@@ -387,11 +405,11 @@ static void calShow() {
   lv_obj_add_flag(calMark, LV_OBJ_FLAG_HIDDEN);
   if (measuring) {
     lv_obj_set_pos(calTarget, CAL_X[calStep] - 16, CAL_Y[calStep] - 16);
-    lv_label_set_text(calTitle, "Tap the dot");
-    lv_label_set_text_fmt(calText, "Right on its middle. %d of 4.", calStep + 1);
+    lv_label_set_text(calTitle, tr("Tap the dot"));
+    lv_label_set_text_fmt(calText, tr("Right on its middle. %d of 4."), calStep + 1);
   } else {
-    lv_label_set_text(calTitle, "Calibrated");
-    lv_label_set_text(calText, "Touch anywhere to check it: the circle should be right under your finger.");
+    lv_label_set_text(calTitle, tr("Calibrated"));
+    lv_label_set_text(calText, tr("Touch anywhere to check it: the circle should be right under your finger."));
   }
 }
 
@@ -446,8 +464,13 @@ static void calTick(lv_timer_t*) {
   if (c.x1 - c.x0 < SCREEN_W / 2 || c.y1 - c.y0 < SCREEN_H / 2) {  // (not taps on the dots)
     calStep = 0;
     calShow();
-    lv_label_set_text(calText, "That didn't look right. Again, from this one.");
+    lv_label_set_text(calText, tr("That didn't look right. Again, from this one."));
     return;
+  }
+  if (flipped()) {  // (measured on the turned picture: kept as the panel has it, unturned)
+    hal::TouchCal f = c;
+    c.x0 = SCREEN_W - 1 - f.x1, c.x1 = SCREEN_W - 1 - f.x0;
+    c.y0 = SCREEN_H - 1 - f.y1, c.y1 = SCREEN_H - 1 - f.y0;
   }
   hal::save("touchcal", &c, sizeof c);
   hal::touchCal(&c);
@@ -490,14 +513,14 @@ static void touchCalPage(lv_obj_t* page) {
   // while it's measured: only a way out
   calTaps = box(mid, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(calTaps, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  button(calTaps, "Cancel", calLeave);
+  button(calTaps, tr("Cancel"), calLeave);
   // then: keep it, again, or none
   calDone = box(mid, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(calDone, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_column(calDone, 6, 0);
-  button(calDone, LV_SYMBOL_OK " Done", calLeave);
-  button(calDone, "Again", calAgain);
-  button(calDone, "Reset", calReset);
+  button(calDone, tr(LV_SYMBOL_OK " Done"), calLeave);
+  button(calDone, tr("Again"), calAgain);
+  button(calDone, tr("Reset"), calReset);
   calTarget = ring(page, 33, t.accent);
   calMark = ring(page, 33, t.knob[1]);
   calShow();
@@ -515,7 +538,7 @@ static void pickTheme(lv_event_t* e) {
 }
 
 static void themePage(lv_obj_t* page) {
-  header(page, "Theme", settingsPage);
+  header(page, tr("Theme"), settingsPage);
   lv_obj_t* grid = scroller(page);
   lv_obj_set_flex_flow(grid, LV_FLEX_FLOW_ROW_WRAP);
   lv_obj_set_style_pad_gap(grid, 6, 0);
@@ -573,9 +596,9 @@ static void identified() {
 static void identifyTapped(lv_event_t*) {
   int d = fm1::current();
   if (d < 0) {
-    toast(devText("No FM-1 on the hub.").c_str(), true);
+    toast(devText(tr("No FM-1 on the hub.")).c_str(), true);
   } else if (!jobs::identify(d)) {
-    toast("Busy: try again in a moment.", true);
+    toast(tr("Busy: try again in a moment."), true);
   }
   go(aboutPage);
 }
@@ -599,15 +622,15 @@ static void aboutFm1(lv_obj_t* body) {
   const Fm1Id* id = d >= 0 ? fm1::known(d) : 0;
   bool mine = jobs::running && jobs::kind == jobs::IDENTIFY;
   fact(body, "Firmware",
-       mine ? "in its boot loader" : id   ? id->text
-                                 : d >= 0 ? "on the hub"
-                                          : devText("no FM-1 on the hub"));
+       mine ? tr("in its boot loader") : id   ? id->text
+                                 : d >= 0 ? tr("on the hub")
+                                          : devText(tr("no FM-1 on the hub")));
   uboot::Chip c;
   if (uboot::lastChip(c)) {
     char s[64];
     bool keyOk = c.key == FM1_KEY;
-    snprintf(s, sizeof s, keyOk ? "%04X (JieLi WL82)" : "%04X (not the FM-1's)", c.key);
-    fact(body, "Chip key", s);
+    snprintf(s, sizeof s, keyOk ? "%04X (JieLi WL82)" : tr("%04X (not the FM-1's)"), c.key);
+    fact(body, tr("Chip key"), s);
     const char* part = uboot::flashName(c.flashId);
     unsigned kib = (unsigned)(c.size / 1024);
     snprintf(s, sizeof s, kib % 1024 ? "%s%s%u KiB" : "%s%s%u MiB", part ? part : "", part ? ", " : "",
@@ -616,11 +639,11 @@ static void aboutFm1(lv_obj_t* body) {
     snprintf(s, sizeof s, "%06X", (unsigned)c.flashId);
     fact(body, "JEDEC ID", s);
     if (!uboot::fm1Flash(c.flashId)) {
-      fact(body, "", "A flash chip fm1buddy doesn't know: recovery won't write it.");
+      fact(body, "", tr("A flash chip fm1buddy doesn't know: recovery won't write it."));
     }
     std::string uid = uboot::uidText(c);
     if (!uid.empty()) {
-      fact(body, "Unique ID", uid);
+      fact(body, tr("Unique ID"), uid);
     }
     if (c.rom[0]) {
       fact(body, "Boot ROM", c.rom);
@@ -630,7 +653,7 @@ static void aboutFm1(lv_obj_t* body) {
       fact(body, "CPU", s);
     }
   } else {
-    fact(body, "Chip", "not read yet");
+    fact(body, tr("Chip"), tr("not read yet"));
   }
   int others = 0;
   for (int o = 0; o < MIDI_USB; o++) {
@@ -639,38 +662,38 @@ static void aboutFm1(lv_obj_t* body) {
   }
   lv_obj_t* row = box(body, LV_FLEX_FLOW_ROW);
   lv_obj_set_style_pad_top(row, 6, 0);
-  lv_obj_t* b = button(row, LV_SYMBOL_REFRESH " Identify", identifyTapped);
+  lv_obj_t* b = button(row, tr(LV_SYMBOL_REFRESH " Identify"), identifyTapped);
   if (jobs::running || d < 0 || others) {
     lv_obj_add_state(b, LV_STATE_DISABLED);
   }
   aboutStatus = label(body, mine ? devText(jobs::status()).c_str() : "", &lv_font_montserrat_14, t.accent);
   lv_obj_update_flag(aboutStatus, LV_OBJ_FLAG_HIDDEN, !mine);
-  const char* how = others ? "Unplug the other USB devices: the FM-1 has to be alone on the hub."
-                           : "Identify reads its chip through its boot loader (as a backup does), then it restarts. "
-                             "Nothing on it changes. Backups and recovery read it too.";
+  const char* how = others ? tr("Unplug the other USB devices: the FM-1 has to be alone on the hub.")
+                           : tr("Identify reads its chip through its boot loader (as a backup does), then it restarts. "
+                             "Nothing on it changes. Backups and recovery read it too.");
   lv_obj_t* l = label(body, devText(how).c_str(), &lv_font_montserrat_12, others ? t.knob[0] : t.dim);
   lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(l, LV_PCT(100));
 }
 
 static void aboutPage(lv_obj_t* page) {
-  header(page, "About", settingsPage);
+  header(page, tr("About"), settingsPage);
   lv_obj_t* body = scroller(page);
   aboutSeq = midi::seq;
   aboutFm1(body);
   lv_obj_t* h = label(body, "fm1buddy", &lv_font_montserrat_16, theme().text);
   lv_obj_set_style_pad_top(h, 10, 0);
-  fact(body, "Version", FM1BUDDY_VERSION);
+  fact(body, tr("Version"), FM1BUDDY_VERSION);
   uint64_t total, used;
   char s[48];
   if (hal::sd() && hal::sdSpace(total, used)) {
-    snprintf(s, sizeof s, "%.1f of %.1f GB free", (total - used) / 1e9, total / 1e9);
-    fact(body, "SD card", s);
+    snprintf(s, sizeof s, tr("%.1f of %.1f GB free"), (total - used) / 1e9, total / 1e9);
+    fact(body, tr("SD card"), s);
   } else {
-    fact(body, "SD card", "none");
+    fact(body, tr("SD card"), tr("none"));
   }
-  fact(body, "Firmwares", std::to_string(catalog::sd.size()) + " in /fm1");
-  fact(body, "Hub list", catalog::hub.empty() ? "not yet" : std::to_string(catalog::hub.size()) + ", from " + catalog::hubUpdated);
+  fact(body, "Firmwares", std::to_string(catalog::sd.size()) + tr(" in /fm1"));
+  fact(body, tr("Hub list"), catalog::hub.empty() ? tr("not yet") : std::to_string(catalog::hub.size()) + tr(", from ") + catalog::hubUpdated);
   fact(body, "Hub", "mutant.cloud");
   tick = aboutTick;
   jobDone = identified;
@@ -686,34 +709,57 @@ static void startPicked(lv_event_t* e) {
 
 static void startOnPage(lv_obj_t* page) {
   const Theme& t = theme();
-  header(page, "Start on", settingsPage);
+  header(page, tr("Start on"), settingsPage);
   lv_obj_t* body = scroller(page);
-  static const char* const ABOUT[STARTS] = {"On the card: no Wi-Fi needed",
-                                            "MIDI routing and devices",
-                                            "The mapping's rules",
-                                            "Play the screen: a pad for two fingers",
-                                            "Sounds, setups, backups",
-                                            "The Firmware Hub's list (Wi-Fi)",
-                                            "Play the screen: 16 pads",
-                                            "The FM-1's screen, big (Big Screen firmware)"};
+  const char* const ABOUT[STARTS] = {tr("On the card: no Wi-Fi needed"),
+                                            tr("MIDI routing and devices"),
+                                            tr("The mapping's rules"),
+                                            tr("Play the screen: a pad for two fingers"),
+                                            tr("Sounds, setups, backups"),
+                                            tr("The Firmware Hub's list (Wi-Fi)"),
+                                            tr("Play the screen: 16 pads"),
+                                            tr("The FM-1's screen, big (Big Screen firmware)")};
   int now = startPage();
   for (int i : START_ORDER) {
     lv_obj_t* r = listRow(body, startPicked, (void*)(intptr_t)i);
     lv_obj_t* col = box(r);
     lv_obj_set_flex_grow(col, 1);
-    label(col, START_NAMES[i], &lv_font_montserrat_16, i == now ? t.accent : t.text);
+    label(col, tr(START_NAMES[i]), &lv_font_montserrat_16, i == now ? t.accent : t.text);
     label(col, ABOUT[i], &lv_font_montserrat_12, t.dim);
     if (i == now) {
       label(r, LV_SYMBOL_OK, &lv_font_montserrat_16, t.accent);
     }
   }
   lv_obj_t* l = label(body,
-                      "What it shows after power-up. To play from the start, switch MIDI routing's "
-                      "\"Start it on power-up\" on too (on the MIDI page).",
+                      tr("What it shows after power-up. To play from the start, switch MIDI routing's "
+                      "\"Start it on power-up\" on too (on the MIDI page)."),
                       &lv_font_montserrat_12, t.dim);
   lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(l, LV_PCT(100));
   lv_obj_set_style_pad_top(l, 6, 0);
+}
+
+// ------------------------------------------------------------------------------------------- language ---
+// the app's texts in another language (i18n.h): each named in its own
+static void languagePicked(lv_event_t* e) {
+  i18n::set((int)(intptr_t)lv_event_get_user_data(e));
+  go(settingsPage);
+  rebuild();  // (the rail and the page again, in it)
+}
+
+static void languagePage(lv_obj_t* page) {
+  const Theme& t = theme();
+  header(page, tr("Language"), settingsPage);
+  lv_obj_t* body = scroller(page);
+  for (int i = 0; i < i18n::LANGS; i++) {
+    bool now = i == i18n::lang();
+    lv_obj_t* r = listRow(body, languagePicked, (void*)(intptr_t)i);
+    lv_obj_t* l = label(r, i18n::NAMES[i], &lv_font_montserrat_16, now ? t.accent : t.text);
+    lv_obj_set_flex_grow(l, 1);
+    if (now) {
+      label(r, LV_SYMBOL_OK, &lv_font_montserrat_16, t.accent);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------------------------- sleep ---
@@ -725,13 +771,13 @@ static void sleepPicked(lv_event_t* e) {
 
 static void sleepPage(lv_obj_t* page) {
   const Theme& t = theme();
-  header(page, "Sleep", settingsPage);
+  header(page, tr("Sleep"), settingsPage);
   lv_obj_t* body = scroller(page);
   int now = sleepMinutes();
   for (int i = 0; i < SLEEPS; i++) {
     int m = SLEEP_MINUTES[i];
     char s[16];
-    snprintf(s, sizeof s, m ? "After %d min" : "Never", m);
+    snprintf(s, sizeof s, m ? tr("After %d min") : tr("Never"), m);
     lv_obj_t* r = listRow(body, sleepPicked, (void*)(intptr_t)m);
     lv_obj_t* l = label(r, s, &lv_font_montserrat_16, m == now ? t.accent : t.text);
     lv_obj_set_flex_grow(l, 1);
@@ -740,9 +786,9 @@ static void sleepPage(lv_obj_t* page) {
     }
   }
   lv_obj_t* l = label(body,
-                      "For a battery: with nothing going on, the screen dims, and 30 s later it sleeps. Touch the "
+                      tr("For a battery: with nothing going on, the screen dims, and 30 s later it sleeps. Touch the "
                       "screen to wake it (it starts again). It stays on while something is on the hub or on "
-                      "Bluetooth, the clock plays, it records or works on something, or a computer is on it.",
+                      "Bluetooth, the clock plays, it records or works on something, or a computer is on it."),
                       &lv_font_montserrat_12, t.dim);
   lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(l, LV_PCT(100));
@@ -755,7 +801,7 @@ static void computerPicked(lv_event_t* e) {
   bool midi = lv_event_get_user_data(e) != 0;
   if (midi != hal::computerMidi()) {
     if (hal::onComputer()) {
-      toast("Restarting...");
+      toast(tr("Restarting..."));
     }
     hal::computerMidiSet(midi);  // (with a computer on the port: a restart, to take it up)
   }
@@ -764,11 +810,11 @@ static void computerPicked(lv_event_t* e) {
 
 static void computerPage(lv_obj_t* page) {
   const Theme& t = theme();
-  header(page, "On a computer", settingsPage);
+  header(page, tr("On a computer"), settingsPage);
   lv_obj_t* body = scroller(page);
-  static const char* const NAMES[] = {"Serial port", "USB MIDI"};
-  static const char* const ABOUT[] = {"For flashing it, and its log",
-                                      "\"fm1buddy\" in music apps"};
+  const char* const NAMES[] = {tr("Serial port"), tr("USB MIDI")};
+  const char* const ABOUT[] = {tr("For flashing it, and its log"),
+                                      tr("\"fm1buddy\" in music apps")};
   bool now = hal::computerMidi();
   for (int i = 0; i < 2; i++) {
     lv_obj_t* r = listRow(body, computerPicked, (void*)(intptr_t)i);
@@ -781,10 +827,10 @@ static void computerPage(lv_obj_t* page) {
     }
   }
   lv_obj_t* l = label(body,
-                      "What the USB-C port is when it's plugged straight into a computer (not the hub). With USB MIDI, "
+                      tr("What the USB-C port is when it's plugged straight into a computer (not the hub). With USB MIDI, "
                       "the computer is a device in MIDI routing, \"Computer\": the touch controller, the clock and "
                       "Bluetooth MIDI devices play it, and it plays them. To flash it then, hold BOOT as you plug it "
-                      "in, or choose Serial port first.",
+                      "in, or choose Serial port first."),
                       &lv_font_montserrat_12, t.dim);
   lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(l, LV_PCT(100));

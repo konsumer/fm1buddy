@@ -27,10 +27,15 @@
 #define LV_LOG_PRINTF 1
 #endif
 
-#define LV_FONT_MONTSERRAT_12 1
-#define LV_FONT_MONTSERRAT_14 1
-#define LV_FONT_MONTSERRAT_16 1
-#define LV_FONT_MONTSERRAT_20 1
+// the fonts are the app's own (fonts/, made by tools/fonts.sh): LVGL's Montserrat under the same names, with the
+// accented letters the app's languages need, and a magnifying glass. LVGL's own are off
+#define LV_FONT_MONTSERRAT_12 0
+#define LV_FONT_MONTSERRAT_14 0
+#define LV_FONT_MONTSERRAT_16 0
+#define LV_FONT_MONTSERRAT_20 0
+#define LV_FONT_CUSTOM_DECLARE                                                                                         \
+  LV_FONT_DECLARE(lv_font_montserrat_12) LV_FONT_DECLARE(lv_font_montserrat_14) LV_FONT_DECLARE(lv_font_montserrat_16) \
+  LV_FONT_DECLARE(lv_font_montserrat_20)
 #define LV_FONT_DEFAULT &lv_font_montserrat_14
 
 // lines break at spaces and punctuation, not inside "FM-1_974"

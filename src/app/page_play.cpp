@@ -8,6 +8,7 @@
 #include "midi.h"
 #include "play.h"
 #include "ui_priv.h"
+#include "i18n.h"
 
 using namespace ui;
 
@@ -97,7 +98,7 @@ static void pickRow(lv_obj_t* body, const char* name, const char* const* names, 
   lv_obj_set_flex_grow(l, 1);
   std::string opts;
   for (int i = 0; i < n; i++) {
-    opts += (i ? "\n" : "") + std::string(names[i]);
+    opts += (i ? "\n" : "") + std::string(tr(names[i]));  // (a name, or a number as it is)
   }
   lv_obj_t* dd = lv_dropdown_create(r);
   lv_dropdown_set_options(dd, opts.c_str());
@@ -140,26 +141,29 @@ static void live() {
     if (bpm > 0) {
       lv_label_set_text_fmt(bpmLabel, "%.1f BPM", bpm);
     } else {
-      lv_label_set_text(bpmLabel, "No clock yet");
+      lv_label_set_text(bpmLabel, tr("No clock yet"));
     }
   }
   if (playLabel) {
-    lv_label_set_text(playLabel, play::playing() ? "Playing" : "Stopped");
+    lv_label_set_text(playLabel, play::playing() ? tr("Playing") : tr("Stopped"));
   }
 }
 
 void ui::playPage(lv_obj_t* page) {
   const Theme& t = theme();
-  header(page, "Clock, arp, chords", midiPage);
+  header(page, tr("Clock, arp, chords"), midiPage);
   lv_obj_t* body = scroller(page);
   lv_obj_set_style_pad_row(body, 4, 0);
   play::Setup s = play::setup();
   if (!midi::routing) {
-    wrapped(body, "MIDI routing is off: these work while it's on.", t.knob[1]);
+    wrapped(body, tr("MIDI routing is off: these work while it's on."), t.knob[1]);
   }
 
   // the clock
-  static const char* clockMap[] = {"Off", "Lead", "Follow", ""};
+  static const char* clockMap[] = {"", "", "", ""};  // (the button matrix keeps it: its texts, in the language now)
+  for (int i = 0; i < play::CLOCKS; i++) {
+    clockMap[i] = tr(play::CLOCK_NAMES[i]);
+  }
   lv_obj_t* m = lv_buttonmatrix_create(body);
   lv_buttonmatrix_set_map(m, clockMap);
   lv_buttonmatrix_set_button_ctrl_all(m, LV_BUTTONMATRIX_CTRL_CHECKABLE);
@@ -168,10 +172,10 @@ void ui::playPage(lv_obj_t* page) {
   lv_obj_set_size(m, LV_PCT(100), 40);
   lv_obj_set_style_pad_all(m, 2, 0);
   lv_obj_add_event_cb(m, pickClock, LV_EVENT_VALUE_CHANGED, 0);
-  static const char* about[] = {"Clock goes between the devices as it is.",
-                                "fm1buddy sends clock at this tempo, and start and stop. The devices' own clock is "
-                                "left out.",
-                                "The first device that sends clock sets the tempo (and the arpeggiator's)."};
+  const char* about[] = {tr("Clock goes between the devices as it is."),
+                                tr("fm1buddy sends clock at this tempo, and start and stop. The devices' own clock is "
+                                "left out."),
+                                tr("The first device that sends clock sets the tempo (and the arpeggiator's).")};
   wrapped(body, about[s.clock % play::CLOCKS], t.dim);
 
   lv_obj_t* r = box(body, LV_FLEX_FLOW_ROW);
@@ -187,39 +191,39 @@ void ui::playPage(lv_obj_t* page) {
     lv_obj_add_event_cb(minus, bpmBy, LV_EVENT_LONG_PRESSED_REPEAT, (void*)(intptr_t)-1);
     lv_obj_t* plus = button(r, LV_SYMBOL_PLUS, bpmBy, (void*)(intptr_t)1);
     lv_obj_add_event_cb(plus, bpmBy, LV_EVENT_LONG_PRESSED_REPEAT, (void*)(intptr_t)1);
-    lv_obj_t* tap = button(r, "Tap", 0);
+    lv_obj_t* tap = button(r, tr("Tap"), 0);
     lv_obj_add_event_cb(tap, tapTapped, LV_EVENT_PRESSED, 0);  // on the press: the tap's own moment
   }
   playLabel = 0;
   if (s.clock == play::CLOCK_LEAD) {
-    lv_obj_t* tr = box(body, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(tr, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(tr, 6, 0);
-    lv_obj_t* st = button(tr, LV_SYMBOL_PLAY " Start", startTapped);
+    lv_obj_t* row = box(body, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(row, 6, 0);
+    lv_obj_t* st = button(row, tr(LV_SYMBOL_PLAY " Start"), startTapped);
     lv_obj_add_state(st, LV_STATE_CHECKED);
-    button(tr, LV_SYMBOL_STOP " Stop", stopTapped);
-    playLabel = label(tr, "", &lv_font_montserrat_14, t.dim);
+    button(row, tr(LV_SYMBOL_STOP " Stop"), stopTapped);
+    playLabel = label(row, "", &lv_font_montserrat_14, t.dim);
   } else if (s.clock == play::CLOCK_FOLLOW) {
     playLabel = label(body, "", &lv_font_montserrat_14, t.dim);
   }
 
   // the arpeggiator
-  switchRow(body, LV_SYMBOL_LOOP "  Arpeggiator", s.arp, toggleArp);
+  switchRow(body, tr(LV_SYMBOL_LOOP "  Arpeggiator"), s.arp, toggleArp);
   if (s.arp) {
     static const char* const OCT_NAMES[] = {"1 octave", "2 octaves", "3 octaves", "4 octaves"};
-    pickRow(body, "     Pattern", play::ARP_NAMES, play::ARPS, s.arpMode, ARP_MODE);
-    pickRow(body, "     Rate", play::RATE_NAMES, play::RATES, s.rate, RATE);
-    pickRow(body, "     Range", OCT_NAMES, 4, s.octaves ? s.octaves - 1 : 0, OCTAVES);
-    switchRow(body, "     Hold (latch)", s.latch, toggleLatch);
+    pickRow(body, tr("     Pattern"), play::ARP_NAMES, play::ARPS, s.arpMode, ARP_MODE);
+    pickRow(body, tr("     Rate"), play::RATE_NAMES, play::RATES, s.rate, RATE);
+    pickRow(body, tr("     Range"), OCT_NAMES, 4, s.octaves ? s.octaves - 1 : 0, OCTAVES);
+    switchRow(body, tr("     Hold (latch)"), s.latch, toggleLatch);
   }
 
   // chords
-  pickRow(body, LV_SYMBOL_LIST "  Chords", play::CHORD_NAMES, play::CHORDS, s.chord, CHORD);
+  pickRow(body, tr(LV_SYMBOL_LIST "  Chords"), play::CHORD_NAMES, play::CHORDS, s.chord, CHORD);
   wrapped(body,
-          s.arp ? devText("Each key plays the chord, and the arpeggiator plays its notes. The FM-1's own notes are left as "
-                          "they are.")
+          s.arp ? devText(tr("Each key plays the chord, and the arpeggiator plays its notes. The FM-1's own notes are left as "
+                          "they are."))
                       .c_str()
-                : devText("Each key plays a chord. The FM-1's own notes are left as they are.").c_str(),
+                : devText(tr("Each key plays a chord. The FM-1's own notes are left as they are.")).c_str(),
           t.dim);
 
   shownBeat = play::beat();

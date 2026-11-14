@@ -44,9 +44,24 @@
 static uint16_t fb[W * H];
 static bool dirty = true;
 
+// the picture a half turn round (hal::flip): the window's and a shot's, and the mouse with it. A script's taps stay
+// the app's own pixels
+static bool flipOn;
+
+void hal::flip(bool on) {
+  flipOn = on;
+}
+
 static void flush(lv_display_t* d, const lv_area_t* a, uint8_t* px) {
   int w = lv_area_get_width(a);
   for (int y = a->y1; y <= a->y2; y++) {
+    if (flipOn) {
+      const uint16_t* row = (const uint16_t*)px + (y - a->y1) * w;
+      for (int x = a->x1; x <= a->x2; x++) {
+        fb[(H - 1 - y) * W + (W - 1 - x)] = row[x - a->x1];
+      }
+      continue;
+    }
     memcpy(&fb[y * W + a->x1], px + (y - a->y1) * w * 2, w * 2);
   }
   dirty = true;
@@ -226,12 +241,12 @@ int main(int argc, char** argv) {
         if (e.type == SDL_QUIT) {
           run = false;
         } else if (e.type == SDL_MOUSEMOTION) {
-          mouse.x = e.motion.x / zoom;
-          mouse.y = e.motion.y / zoom;
+          mouse.x = flipOn ? W - 1 - e.motion.x / zoom : e.motion.x / zoom;
+          mouse.y = flipOn ? H - 1 - e.motion.y / zoom : e.motion.y / zoom;
           useScript = false;
         } else if (e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP) {
-          mouse.x = e.button.x / zoom;
-          mouse.y = e.button.y / zoom;
+          mouse.x = flipOn ? W - 1 - e.button.x / zoom : e.button.x / zoom;
+          mouse.y = flipOn ? H - 1 - e.button.y / zoom : e.button.y / zoom;
           mouse.down = e.type == SDL_MOUSEBUTTONDOWN;
           useScript = false;
         }

@@ -14,6 +14,7 @@
 
 #include "hal.h"
 #include "midi.h"
+#include "i18n.h"
 
 static const uint8_t HS_QUERY[] = {0xF0, 0x00, 0x32, 0x45, 0x00, 0x00, 0x00, 0x40, 0x7F, 0xF7};
 static const uint8_t UPGRADE[] = {0xF0, 0x22, 0x24, 0x35, 0x7F, 0xF7};
@@ -144,41 +145,41 @@ const char* Pkg::open(const char* p) {
   snprintf(path, sizeof path, "%s", p);
   FILE* f = fopen(p, "rb");
   if (!f) {
-    return "Can't open the file on the SD card.";
+    return tr("Can't open the file on the SD card.");
   }
   fseek(f, 0, SEEK_END);
   long n = ftell(f);
   fseek(f, 0, SEEK_SET);
   if (n < BLOCKS * BLK || n > 16 * 1024 * 1024) {
     fclose(f);
-    return "That isn't a firmware package.";
+    return tr("That isn't a firmware package.");
   }
   uint8_t* raw = (uint8_t*)malloc(n);  // big blocks go to the PSRAM
   if (!raw) {
     fclose(f);
-    return "Not enough memory for the package.";
+    return tr("Not enough memory for the package.");
   }
   bool got = fread(raw, 1, n, f) == (size_t)n;
   fclose(f);
   if (!got) {
     free(raw);
-    return "The SD card didn't read the whole file.";
+    return tr("The SD card didn't read the whole file.");
   }
   fileSize = n;
   char again[65];
   if (!hal::sha256(raw, n, sha256) || !hal::sha256(p, again) || strcmp(sha256, again)) {
     free(raw);
-    return "The SD card read the file differently twice: try another card.";
+    return tr("The SD card read the file differently twice: try another card.");
   }
   uint32_t blocks;
   if (!pkgHead(raw, n, product, sizeof product, blocks)) {
     free(raw);
-    return "That isn't a firmware package.";
+    return tr("That isn't a firmware package.");
   }
   image = (uint8_t*)malloc(n - BLOCKS);
   if (!image) {
     free(raw);
-    return "Not enough memory for the package.";
+    return tr("Not enough memory for the package.");
   }
   logical(raw, n, blocks, image);
   if (blocks != BLOCKS && !intact(image, n - blocks)) {  // the 0x7D markers were by chance?
@@ -780,8 +781,8 @@ static const char* write(int d, const Pkg& pkg, Fm1Progress cb) {
   wait(2000);
   Served s = serve(d, pkg, FINISH_WRITE, 180000, STEP_WRITE, cb);
   if (!s.finished) {
-    return s.lost ? "The loader was disconnected. Replug the FM-1 and install again to finish."
-                  : "The loader stopped. Replug the FM-1 and install again to finish.";
+    return s.lost ? tr("The loader was disconnected. Replug the FM-1 and install again to finish.")
+                  : tr("The loader stopped. Replug the FM-1 and install again to finish.");
   }
   return 0;
 }
@@ -794,11 +795,11 @@ static const char* comeBack(const Pkg& pkg, Fm1Progress cb) {
   wait(3000);
   int d = waitFor(false, id, 40000);
   if (d < 0) {
-    return "The FM-1 didn't come back: switch it off and on.";
+    return tr("The FM-1 didn't come back: switch it off and on.");
   }
   note("back: %d says %s", d, id.text);
   if (strcmp(id.text, pkg.product)) {
-    snprintf(err, sizeof err, "Installed, but the FM-1 says it's %s.", id.text);
+    snprintf(err, sizeof err, tr("Installed, but the FM-1 says it's %s."), id.text);
     return err;
   }
   cb(STEP_DONE, 0, 0);
@@ -818,13 +819,13 @@ static const char* steps(const Pkg& pkg, Fm1Progress cb) {
   }
   d = find(false, id);
   if (d < 0) {
-    return "No FM-1 answered: is it on, and on the hub?";
+    return tr("No FM-1 answered: is it on, and on the hub?");
   }
   midi::Dev v;
   midi::dev(d, v);
   note("%d is %s (%s, %04X:%04X)", d, id.text, v.name, v.vid, v.pid);
   if (!pkg.fits(id)) {
-    snprintf(err, sizeof err, "The FM-1 is %s, the package is for %s.", id.text, pkg.product);
+    snprintf(err, sizeof err, tr("The FM-1 is %s, the package is for %s."), id.text, pkg.product);
     return err;
   }
   cb(STEP_VERIFY, 0, 0);
@@ -833,8 +834,8 @@ static const char* steps(const Pkg& pkg, Fm1Progress cb) {
   wait(2000);
   Served s = serve(d, pkg, FINISH_VERIFY, 8000, STEP_VERIFY, cb);
   if (!s.finished) {
-    snprintf(err, sizeof err, "The FM-1 %s after %u requests: nothing was written.",
-             s.lost ? "was disconnected" : s.bad ? "asked for something not in the package"
+    snprintf(err, sizeof err, tr("The FM-1 %s after %u requests: nothing was written."),
+             s.lost ? tr("was disconnected") : s.bad ? tr("asked for something not in the package")
                                                  : "stopped",
              (unsigned)s.served);
     return err;
@@ -844,7 +845,7 @@ static const char* steps(const Pkg& pkg, Fm1Progress cb) {
   wait(3000);
   d = waitFor(true, id, 30000);
   if (d < 0) {
-    return "The update loader didn't appear. Replug the FM-1 and install again: it stays in update mode until it's done.";
+    return tr("The update loader didn't appear. Replug the FM-1 and install again: it stays in update mode until it's done.");
   }
   note("%d is %s", d, id.text);
   const char* e = write(d, pkg, cb);

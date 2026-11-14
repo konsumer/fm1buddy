@@ -14,6 +14,7 @@
 #include "midi.h"
 #include "uboot.h"
 #include "ui_priv.h"
+#include "i18n.h"
 
 using namespace ui;
 
@@ -24,16 +25,16 @@ static void backedUp() {
   if (jobs::kind != jobs::BACKUP) {
     return;
   }
-  toast(jobs::ok ? ("Saved as " BACKUPS_DIR "/" + jobs::saved + ".").c_str() : devText(jobs::error).c_str(), !jobs::ok);
+  toast(jobs::ok ? (tr("Saved as " BACKUPS_DIR "/") + jobs::saved + ".").c_str() : devText(jobs::error).c_str(), !jobs::ok);
   go(backupPage);
 }
 
 static void backupTapped(lv_event_t*) {
   int d = fm1::current();
   if (d < 0) {
-    toast(devText("No FM-1 on the hub.").c_str(), true);
+    toast(devText(tr("No FM-1 on the hub.")).c_str(), true);
   } else if (!jobs::backup(d)) {
-    toast("Busy: try again in a moment.", true);
+    toast(tr("Busy: try again in a moment."), true);
   }
   go(backupPage);
 }
@@ -72,14 +73,14 @@ static lv_obj_t* wrapped(lv_obj_t* body, const char* text, uint32_t color) {
 
 void ui::backupPage(lv_obj_t* page) {
   const Theme& t = theme();
-  header(page, devText("Back up the FM-1").c_str(), soundsPage);
+  header(page, devText(tr("Back up the FM-1")).c_str(), soundsPage);
   lv_obj_t* body = scroller(page);
   lv_obj_set_style_pad_row(body, 4, 0);
   shownSeq = midi::seq;
   // the flash map, once there's one (it's read, or being read): instead of what a backup is, so it all fits
   bool map = jobs::kind == jobs::BACKUP && (jobs::running || jobs::mapKind[0] != jobs::MAP_UNREAD);
   if (!map) {
-    wrapped(body, "All of its flash to the SD card: its firmware, settings, projects and samples. Nothing on it changes.",
+    wrapped(body, tr("All of its flash to the SD card: its firmware, settings, projects and samples. Nothing on it changes."),
             t.dim);
   }
   int d = fm1::current();
@@ -91,7 +92,7 @@ void ui::backupPage(lv_obj_t* page) {
   }
   lv_obj_t* row = box(body, LV_FLEX_FLOW_ROW);
   lv_obj_set_style_pad_top(row, 6, 0);
-  lv_obj_t* b = button(row, LV_SYMBOL_SAVE " Back it up", backupTapped);
+  lv_obj_t* b = button(row, tr(LV_SYMBOL_SAVE " Back it up"), backupTapped);
   if (jobs::running || d < 0 || others) {
     lv_obj_add_state(b, LV_STATE_DISABLED);
   }
@@ -102,15 +103,15 @@ void ui::backupPage(lv_obj_t* page) {
     flashMap(body, 8, false);
   }
   if (!jobs::running) {
-    std::string what = d < 0    ? devText("No FM-1 on the hub.")
-                       : others ? devText("Unplug the other USB devices: the FM-1 has to be alone on the hub.")
-                       : id     ? devText("The FM-1 runs ") + id->text + "."
-                                : devText("The FM-1 is there.");
+    std::string what = d < 0    ? devText(tr("No FM-1 on the hub."))
+                       : others ? devText(tr("Unplug the other USB devices: the FM-1 has to be alone on the hub."))
+                       : id     ? devText(tr("The FM-1 runs ")) + id->text + "."
+                                : devText(tr("The FM-1 is there."));
     wrapped(body, what.c_str(), d < 0 || others ? t.knob[0] : t.dim);
   }
 
   // the backups
-  lv_obj_t* h = label(body, "On the SD card (" BACKUPS_DIR ")", &lv_font_montserrat_14, t.text);
+  lv_obj_t* h = label(body, tr("On the SD card (" BACKUPS_DIR ")"), &lv_font_montserrat_14, t.text);
   lv_obj_set_style_pad_top(h, 6, 0);
   std::vector<std::pair<std::string, uint32_t>> files;
   std::string dir = catalog::path(BACKUPS_DIR);
@@ -137,7 +138,7 @@ void ui::backupPage(lv_obj_t* page) {
     label(r, s, &lv_font_montserrat_12, t.dim);
   }
   if (files.empty()) {
-    label(body, hal::sd() ? "None yet." : "No SD card.", &lv_font_montserrat_12, t.dim);
+    label(body, hal::sd() ? tr("None yet.") : tr("No SD card."), &lv_font_montserrat_12, t.dim);
   }
   tick = backupTick;
   jobDone = backedUp;

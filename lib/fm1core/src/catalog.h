@@ -6,6 +6,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stdio.h>
 
 #include <string>
 #include <vector>
@@ -87,6 +88,10 @@ bool hubWhen(std::string& updated);
 bool eachHub(bool (*fn)(const FwList& one, void* arg), void* arg);
 // one firmware of HUB_LIST, by where its line starts (FwItem::line), into one (one[0]): false if it isn't there
 bool hubAt(uint32_t line, FwList& one);
+// the same from HUB_LIST already open (openHub: 0 if it isn't there; fclose it), for many at once: opening a file on
+// an SD card on SPI is slow
+FILE* openHub();
+bool hubAt(FILE* f, uint32_t line, FwList& one);
 // the files in /fm1, with what the Hub's list knows about them; marks the Hub's that are there. Quick: it reads no
 // whole file (a sha256 not known yet is read in the background: hashSd)
 void scanSd();

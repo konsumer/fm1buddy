@@ -326,15 +326,22 @@ bool catalog::eachHub(bool (*fn)(const FwList& one, void* arg), void* arg) {
   return true;
 }
 
-bool catalog::hubAt(uint32_t line, FwList& one) {
-  FILE* f = fopen(path(HUB_LIST).c_str(), "r");
-  if (!f) {
-    return false;
-  }
+FILE* catalog::openHub() {
+  return fopen(path(HUB_LIST).c_str(), "r");
+}
+
+bool catalog::hubAt(FILE* f, uint32_t line, FwList& one) {
   std::string text;
   one.clear();
-  bool ok = !fseek(f, line, SEEK_SET) && readLine(f, text) && addLine(text, line, one);
-  fclose(f);
+  return f && !fseek(f, line, SEEK_SET) && readLine(f, text) && addLine(text, line, one);
+}
+
+bool catalog::hubAt(uint32_t line, FwList& one) {
+  FILE* f = openHub();
+  bool ok = hubAt(f, line, one);
+  if (f) {
+    fclose(f);
+  }
   return ok;
 }
 

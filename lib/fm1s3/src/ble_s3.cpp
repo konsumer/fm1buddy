@@ -483,7 +483,19 @@ static void dial(int i) {
 }
 
 // ------------------------------------------------------------------------------------ start, stop ---
+// the internal RAM Bluetooth takes to start (NimBLE's host and controller): with less, it isn't started (a board with no
+// PSRAM: its start would fail, and restart the board)
+#define BLE_RAM (64 * 1024)
+
 static void start() {
+  if (heap_caps_get_free_size(MALLOC_CAP_INTERNAL) < BLE_RAM) {
+    hal::log("ble: not started: %u KB internal RAM free, it takes %u", (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
+             (unsigned)(BLE_RAM / 1024));
+    want = false;
+    bool off = false;
+    hal::save("bluetooth", &off, 1);  // (not again at the next start)
+    return;
+  }
   if (!evq) {
     evq = xRingbufferCreate(8192, RINGBUF_TYPE_NOSPLIT);
   }

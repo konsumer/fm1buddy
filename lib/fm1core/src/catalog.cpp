@@ -14,6 +14,7 @@
 #include <atomic>
 #include <mutex>
 
+#include "flashbuf.h"
 #include "fm1.h"
 #include "hal.h"
 
@@ -33,6 +34,10 @@ static bool readAll(const std::string& p, std::string& out) {
   fseek(f, 0, SEEK_END);
   long n = ftell(f);
   fseek(f, 0, SEEK_SET);
+  if (n > 0 && !roomFor(n)) {
+    fclose(f);
+    return false;
+  }
   out.resize(n > 0 ? n : 0);
   bool ok = n > 0 && fread(&out[0], 1, n, f) == (size_t)n;
   fclose(f);

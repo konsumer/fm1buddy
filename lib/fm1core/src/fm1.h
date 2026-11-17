@@ -29,9 +29,11 @@ bool sameHardware(const char* a, const char* b);
 // and its interleave blocks (blocks: 20, or more: the SMK-37's stock packages have 36). False if it isn't a package
 bool pkgHead(const uint8_t* raw, uint32_t n, char* product, uint32_t max, uint32_t& blocks);
 
-// a .fwsc, read from the SD card into memory once (and checked), so the install never waits on the card
+// a .fwsc, read from the SD card into memory once (and checked), so the install never waits on the card. Where there
+// isn't room for it (a board with no PSRAM: FlashBuf::lowMemory), it's checked the same way, and stays on the card:
+// each read is from the file (through a small cache)
 struct Pkg {
-  uint8_t* image = 0;     // the logical image
+  uint8_t* image = 0;     // the logical image (0: it's read from the file)
   uint32_t size = 0;      // its size
   uint32_t fileSize = 0;  // the .fwsc's
   char product[24] = "";  // "FM-1_904", "SMK-37 Elite_016"
@@ -46,6 +48,14 @@ struct Pkg {
   // doesn't match its CRC
   bool flash(uint32_t& at, uint32_t& n) const;
   ~Pkg() { close(); }
+
+ private:
+  FILE* file = 0;  // (read from the file: it, and its interleave blocks)
+  uint32_t blocks = 0;
+  mutable uint8_t* cache = 0;  // some of the file, from cacheAt
+  mutable uint32_t cacheAt = 0, cacheLen = 0;
+  bool fileRead(uint32_t off, uint8_t* out, uint32_t len) const;
+  const char* openFile(const char* p, long n);
 };
 
 enum Fm1Step { STEP_START,

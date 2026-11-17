@@ -279,9 +279,10 @@ bool uboot::lastChip(Chip& chip) {
   return hal::load(CHIP_KEY_NAME, &chip, sizeof chip) && chip.flashId;
 }
 
-const char* uboot::read(const Chip& chip, std::vector<uint8_t>& out, void (*progress)(uint32_t, uint32_t)) {
-  out.assign(chip.size, 0);
+const char* uboot::read(const Chip& chip, void (*got)(uint32_t, const uint8_t*, uint32_t),
+                        void (*progress)(uint32_t, uint32_t)) {
   uint32_t io = chip.io >= IO ? chip.io : IO;
+  std::vector<uint8_t> buf(io);
   for (uint32_t at = 0; at < chip.size; at += io) {
     uint32_t n = std::min(io, chip.size - at);
     uint8_t args[6], cdb[16];
@@ -290,8 +291,8 @@ const char* uboot::read(const Chip& chip, std::vector<uint8_t>& out, void (*prog
     cdbOf(cdb, READ_FLASH, args, 6);
     bool ok = false;
     for (int t = 0; t < 3 && !ok; t++) {
-      uint32_t got = 0;
-      ok = hal::storageCommand(cdb, 16, true, &out[at], n, &got, 2000) && got == n;
+      uint32_t k = 0;
+      ok = hal::storageCommand(cdb, 16, true, buf.data(), n, &k, 2000) && k == n;
       if (!ok) {
         hal::log("uboot: reading %06X: no answer (try %d)", (unsigned)at, t + 1);
       }
@@ -299,6 +300,7 @@ const char* uboot::read(const Chip& chip, std::vector<uint8_t>& out, void (*prog
     if (!ok) {
       return "It stopped answering.";
     }
+    got(at, buf.data(), n);
     if (progress) {
       progress(at + n, chip.size);  // (each read: the flash map shows each sector)
     }
@@ -416,4 +418,9 @@ bool uboot::stuck() {
 
 bool uboot::smkFlash(const std::vector<uint8_t>& flash) {
   return flash.size() >= SMK_MARK + 7 && !memcmp(&flash[SMK_MARK], "trimdat", 7);
+}
+
+bool uboot::smkFlash(const FlashBuf& flash) {
+  uint8_t m[7];
+  return flash.read(SMK_MARK, m, sizeof m) && !memcmp(m, "trimdat", 7);
 }

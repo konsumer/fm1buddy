@@ -653,6 +653,14 @@ void fake::keyed() {
   ubootEnter();
 }
 
+std::string fake::flashSha() {
+  char hex[65] = "";
+  if (!ub.flash.empty()) {
+    hal::sha256(ub.flash.data(), ub.flash.size(), hex);
+  }
+  return hex;
+}
+
 // out of it: its firmware starts again (it's already gone from the hub as a MIDI device)
 static void ubootLeave() {
   ub.on = false;

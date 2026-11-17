@@ -5,6 +5,8 @@
 
 #include <stdint.h>
 
+#include <string>
+
 namespace fake {
 void begin(bool fm1, int keys, bool faults, bool fomajam = false);  // keys: how many keyboards (the same one)
 // the FM-1 runs SLOOP (its editor protocol: backups, projects, sample slots)
@@ -27,4 +29,6 @@ bool storageThere(uint16_t vid, uint16_t pid);
 bool storage(const uint8_t* cdb, uint8_t cdbLen, bool in, uint8_t* buf, uint32_t len, uint32_t* got);
 // recovery: it took the key as it was switched on (whatever its firmware): straight into its boot loader
 void keyed();
+// the sha256 of its flash (its boot loader's, once it has been there: "" before)
+std::string flashSha();
 }  // namespace fake

@@ -1,6 +1,7 @@
 // The app on the desktop: an SDL window twice the screen's size, the mouse for touch.
 //
 //   program [--headless] [--zoom N] [--theme NAME] [--fm1] [--fomajam] [--sloop] [--kitten] [--smk] [--lostcal] [--bigscreen] [--faults] [--keys [N]] [--clock] [--install FILE]
+//           [--backup] [--recover FILE] [--lowmem]
 //           [--script "tap 24 70; wait 300; shot a.bmp; quit"]
 //
 // --fm1 puts a pretend FM-1 on the hub (it goes through a whole install), --fomajam makes it one running fomajam (it
@@ -8,6 +9,9 @@
 // and sends MIDI clock at 100 BPM).
 // --install FILE installs /fm1/FILE on the pretend FM-1, again (as a person would) if it doesn't finish, up to 3
 // times, then quits: 0 if it's installed, 1 if not.
+// --backup backs up the pretend FM-1's flash, --recover FILE (/fm1/X.fwsc or /backups/X.bin) recovers it (recovery
+// mode, the key, the writes), then quit: 0 if it went, 1 if not. Each logs its flash's sha256 after ("sim: flash").
+// --lowmem keeps big things on the SD card (FlashBuf::lowMemory), as a board without PSRAM does (cardbuddy's)
 //
 // The script runs after start: tap X Y (screen pixels), drag X1 Y1 X2 Y2, press X Y and release (a finger held),
 // finger2 X Y and lift2 (a second finger, for the touch controller), wait MS, shot FILE (a .bmp of the
@@ -31,6 +35,8 @@
 
 #include "catalog.h"
 #include "fake.h"
+#include "flashbuf.h"
+#include "fm1.h"
 #include "hal.h"
 #include "jobs.h"
 #include "settings.h"
@@ -132,7 +138,8 @@ int main(int argc, char** argv) {
   int keys = 0;
   const char* themeName = 0;
   int zoom = 2;
-  std::string script, install;
+  std::string script, install, recoverFrom;
+  bool backup = false;
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--headless")) {
       headless = true;
@@ -142,6 +149,13 @@ int main(int argc, char** argv) {
       fm1 = fomajam = true;
     } else if (!strcmp(argv[i], "--faults")) {
       faults = true;
+    } else if (!strcmp(argv[i], "--backup")) {
+      backup = fm1 = true;
+    } else if (!strcmp(argv[i], "--recover") && i + 1 < argc) {
+      recoverFrom = argv[++i];
+      fm1 = true;
+    } else if (!strcmp(argv[i], "--lowmem")) {
+      FlashBuf::lowMemory = true;
     } else if (!strcmp(argv[i], "--install") && i + 1 < argc) {
       install = argv[++i];
       fm1 = true;
@@ -300,6 +314,32 @@ int main(int argc, char** argv) {
         run = false;
       } else if (tries == 3) {
         hal::log("sim: not installed: %s", jobs::error.c_str());
+        result = 1;
+        run = false;
+      }
+    }
+    // --backup, --recover: a job at a time (0: not started), each once the last has finished
+    static int phase;
+    static uint32_t seen;
+    if (run && (backup || !recoverFrom.empty()) && (int32_t)(hal::millis() - installAt) >= 0 && !jobs::running) {
+      bool over = phase && seen != jobs::finished;
+      if (backup && !phase && fm1::current() >= 0) {
+        hal::log("sim: backup");
+        seen = jobs::finished, phase = jobs::backup(fm1::current()) ? 1 : 9;
+      } else if (!recoverFrom.empty() && !phase && fm1::current() >= 0) {
+        hal::log("sim: recover %s: prepare", recoverFrom.c_str());
+        seen = jobs::finished, phase = jobs::prepare(recoverFrom) ? 2 : 9;
+      } else if (phase == 2 && over && jobs::ok) {
+        hal::log("sim: recover");
+        seen = jobs::finished, phase = jobs::recover() ? 3 : 9;
+      } else if ((phase == 1 || phase == 3) && over) {
+        hal::log("sim: %s: %s%s", phase == 1 ? "backup" : "recover", jobs::ok ? "ok " : "failed: ",
+                 jobs::ok ? jobs::saved.c_str() : jobs::error.c_str());
+        hal::log("sim: flash %s", fake::flashSha().c_str());
+        result = !jobs::ok;
+        run = false;
+      } else if (phase == 9 || (phase == 2 && over)) {
+        hal::log("sim: failed: %s", jobs::error.c_str());
         result = 1;
         run = false;
       }

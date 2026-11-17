@@ -11,6 +11,8 @@
 
 #include <algorithm>
 
+#include "flashbuf.h"
+
 #define RATE 22050
 #define WAV_MAX (4 * 1024 * 1024)  // a .wav, at most (read whole, into PSRAM)
 
@@ -167,6 +169,10 @@ static const char* readWav(const std::string& path, std::vector<float>& x, uint3
   if (size < 44 || size > WAV_MAX) {
     fclose(f);
     return size < 44 ? "not a .wav" : "too big";
+  }
+  if (!roomFor(size * 6)) {  // (it, and its samples as doubles)
+    fclose(f);
+    return "too big for this board's memory";
   }
   std::vector<uint8_t> b(size);
   bool got = fread(b.data(), 1, size, f) == (size_t)size;

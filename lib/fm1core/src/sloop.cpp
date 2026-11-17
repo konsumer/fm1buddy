@@ -14,6 +14,7 @@
 #include <thread>
 
 #include "catalog.h"
+#include "flashbuf.h"
 #include "hal.h"
 #include "midi.h"
 #include "sloopfmt.h"
@@ -240,6 +241,10 @@ static bool loadFile(const std::string& path, std::vector<char>& out) {
   fseek(f, 0, SEEK_END);
   long n = ftell(f);
   fseek(f, 0, SEEK_SET);
+  if (n > 0 && !roomFor((size_t)n + 1)) {
+    fclose(f);
+    return false;
+  }
   out.resize(n > 0 ? (size_t)n + 1 : 1);
   bool ok = n >= 0 && fread(out.data(), 1, (size_t)n, f) == (size_t)n;
   out[out.size() - 1] = 0;
@@ -849,7 +854,12 @@ const char* sloop::loadSamples(int d, const std::string& source, int slot, Progr
     std::vector<double> x;
     std::string why;
     std::string base = f.substr(f.rfind('/') + 1);
-    if (!loadFile(f, raw) || !readWav((const uint8_t*)raw.data(), raw.size() - 1, rate, x, why) || x.empty()) {
+    bool got = loadFile(f, raw);
+    if (got && !roomFor(raw.size() * 6)) {  // (its samples as doubles, and resampled)
+      why = "too big for this board's memory";
+      got = false;
+    }
+    if (!got || !readWav((const uint8_t*)raw.data(), raw.size() - 1, rate, x, why) || x.empty()) {
       w = base + ": " + (why.empty() ? "no audio" : why);
       return w.c_str();
     }

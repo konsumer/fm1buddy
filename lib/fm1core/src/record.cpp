@@ -1,6 +1,7 @@
 #include "record.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 
@@ -45,11 +46,16 @@ static void header(uint8_t* h, uint32_t data) {
 }
 
 static void writer(void*) {
-  uint8_t* buf = new uint8_t[CHUNK];  // (big blocks go to PSRAM on the board)
+  uint32_t chunk = CHUNK;
+  uint8_t* buf = (uint8_t*)malloc(chunk);  // (big blocks go to PSRAM on the board)
+  if (!buf) {
+    chunk = 4096;  // (no PSRAM: less at a time)
+    buf = (uint8_t*)malloc(chunk);
+  }
   bool ok = true;
   for (;;) {
     bool last = !going;  // (one more read once it's stopped: what was left)
-    uint32_t n = hal::audioRead(buf, CHUNK);
+    uint32_t n = buf ? hal::audioRead(buf, chunk) : 0;
     if (n && ok) {
       if (fwrite(buf, 1, n, out) != n) {
         ok = false;
@@ -60,10 +66,10 @@ static void writer(void*) {
         written += n;
       }
     }
-    if (last && n < CHUNK) {
+    if (last && n < chunk) {
       break;
     }
-    if (n < CHUNK) {
+    if (n < chunk) {
       std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
   }
@@ -78,7 +84,7 @@ static void writer(void*) {
   fwrite(h, 1, sizeof h, out);
   fclose(out);
   out = 0;
-  delete[] buf;
+  free(buf);
   writing = false;
 }
 

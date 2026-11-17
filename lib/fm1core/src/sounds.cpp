@@ -12,6 +12,7 @@
 #include <thread>
 
 #include "catalog.h"
+#include "flashbuf.h"
 #include "fm1.h"
 #include "hal.h"
 #include "kits.h"
@@ -152,7 +153,7 @@ bool sounds::load(const std::string& name, std::vector<uint8_t>& out) {
   fseek(f, 0, SEEK_END);
   long n = ftell(f);
   fseek(f, 0, SEEK_SET);
-  bool ok = n >= 0 && n <= 1024 * 1024;
+  bool ok = n >= 0 && n <= 1024 * 1024 && roomFor(n);
   if (ok) {
     out.resize(n);
     ok = fread(out.data(), 1, n, f) == (size_t)n;
@@ -471,7 +472,7 @@ static bool loadFile(const std::string& path, std::vector<uint8_t>& out, long he
   long n = ftell(f);
   fseek(f, 0, SEEK_SET);
   n = head && n > head ? head : n;
-  bool ok = n > 0 && n <= SHARE_FILE_MAX;
+  bool ok = n > 0 && n <= SHARE_FILE_MAX && roomFor(n);
   if (ok) {
     out.resize(n);
     ok = fread(out.data(), 1, n, f) == (size_t)n;

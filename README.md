@@ -85,7 +85,10 @@ MIDI clock to follow; `press X Y`, `release`, `finger2 X Y` and `lift2` in a scr
 controller.
 
 `tools/install-test.sh` installs a package on the pretend FM-1, cleanly and with faults (lost and repeated requests,
-garbled answers, unplugged while writing), and checks it ends up exactly as the package.
+garbled answers, unplugged while writing), and checks it ends up exactly as the package. Each runs again with
+`--lowmem`, as on a board with no PSRAM (cardbuddy's Cardputer): the package is read from the SD card as it goes.
+`tools/recover-test.sh` backs up and recovers the pretend FM-1 (from a package, an FM-1's backup and an SMK-37's), with
+and without `--lowmem` (the flash kept on the SD card: `FlashBuf`), and checks both leave the same flash and backup.
 
 Each install on the board writes what went between it and the FM-1 to `fm1buddy/installs/N.txt` on the SD card (the
 last 10 are kept): send one along with a report of an install gone wrong.

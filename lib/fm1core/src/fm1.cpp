@@ -7,11 +7,13 @@
 #include <strings.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <chrono>
 #include <string>
 #include <thread>
 #include <vector>
 
+#include "flashbuf.h"
 #include "hal.h"
 #include "midi.h"
 
@@ -39,7 +41,7 @@ bool Fm1Id::ota() const {
 #define KEEP 0x2F
 
 static void enc(uint8_t* p, uint32_t n);
-static uint16_t crc16(const uint8_t* p, uint32_t n);
+static uint16_t crc16(const uint8_t* p, uint32_t n, uint16_t c = 0);
 
 static bool idChar(uint8_t m, uint32_t i) {
   uint8_t c = (m - i - 1) & 0xFF;
@@ -113,24 +115,64 @@ static uint32_t le32(const uint8_t* p) {
 
 // the image is whole: its header, its file list and the CRCs of what the device installs (flash.bin, ota.bin; the
 // stock packer's other files carry a CRC of something else: only their bounds)
-static bool intact(const uint8_t* img, uint32_t size) {
+// the image, read: in memory (mem), or a package's (pkg: its file)
+struct Img {
+  const uint8_t* mem;
+  const Pkg* pkg;
+  uint32_t size;
+  bool read(uint32_t at, uint8_t* out, uint32_t n) const {
+    if (at > size || n > size - at) {
+      return false;
+    }
+    if (mem) {
+      memcpy(out, mem + at, n);
+      return true;
+    }
+    return pkg->read(at, out, n);
+  }
+  // the CRC of n bytes from at (false: it couldn't be read)
+  bool crc(uint32_t at, uint32_t n, uint16_t& c) const {
+    if (at > size || n > size - at) {
+      return false;
+    }
+    if (mem) {
+      c = crc16(mem + at, n);
+      return true;
+    }
+    uint8_t buf[512];
+    c = 0;
+    for (uint32_t i = 0; i < n; i += sizeof buf) {
+      uint32_t k = n - i < sizeof buf ? n - i : sizeof buf;
+      if (!pkg->read(at + i, buf, k)) {
+        return false;
+      }
+      c = crc16(buf, k, c);
+    }
+    return true;
+  }
+};
+
+static bool intact(const Img& img) {
   uint8_t h[0x40];
-  if (size < sizeof h) {
+  if (!img.read(0, h, sizeof h)) {
     return false;
   }
-  memcpy(h, img, sizeof h);
   enc(h, sizeof h);
   uint32_t count = le16(h + 8);
-  if (crc16(h + 2, 0x3E) != le16(h) || count < 1 || count > 8 || size < 0x40 + 0x50 * count ||
-      crc16(img + 0x40, 0x50 * count) != le16(h + 2)) {
+  uint16_t c;
+  if (crc16(h + 2, 0x3E) != le16(h) || count < 1 || count > 8 || img.size < 0x40 + 0x50 * count ||
+      !img.crc(0x40, 0x50 * count, c) || c != le16(h + 2)) {
     return false;
   }
   for (uint32_t i = 0; i < count; i++) {
     uint8_t e[0x50];
-    memcpy(e, img + 0x40 + i * 0x50, sizeof e);
+    if (!img.read(0x40 + i * 0x50, e, sizeof e)) {
+      return false;
+    }
     enc(e, sizeof e);
     uint32_t type = le16(e), off = le32(e + 8), len = le32(e + 12);
-    if (off > size || len > size - off || ((type == 0 || type == 100) && crc16(img + off, len) != le16(e + 4))) {
+    if (off > img.size || len > img.size - off ||
+        ((type == 0 || type == 100) && (!img.crc(off, len, c) || c != le16(e + 4)))) {
       return false;
     }
   }
@@ -153,10 +195,10 @@ const char* Pkg::open(const char* p) {
     fclose(f);
     return "That isn't a firmware package.";
   }
-  uint8_t* raw = (uint8_t*)malloc(n);  // big blocks go to the PSRAM
+  uint8_t* raw = FlashBuf::lowMemory ? 0 : (uint8_t*)malloc(n);  // big blocks go to the PSRAM
   if (!raw) {
     fclose(f);
-    return "Not enough memory for the package.";
+    return openFile(p, n);  // (no room: it stays on the card)
   }
   bool got = fread(raw, 1, n, f) == (size_t)n;
   fclose(f);
@@ -178,12 +220,12 @@ const char* Pkg::open(const char* p) {
   image = (uint8_t*)malloc(n - BLOCKS);
   if (!image) {
     free(raw);
-    return "Not enough memory for the package.";
+    return openFile(p, n);
   }
   logical(raw, n, blocks, image);
-  if (blocks != BLOCKS && !intact(image, n - blocks)) {  // the 0x7D markers were by chance?
+  if (blocks != BLOCKS && !intact({image, 0, (uint32_t)n - blocks})) {  // the 0x7D markers were by chance?
     logical(raw, n, BLOCKS, image);
-    if (intact(image, n - BLOCKS)) {
+    if (intact({image, 0, (uint32_t)n - BLOCKS})) {
       blocks = BLOCKS;
       idText(raw, BLOCKS, product, sizeof product);
     } else {
@@ -195,7 +237,67 @@ const char* Pkg::open(const char* p) {
   return 0;
 }
 
+// the same, with the package left on the card: its head read for who it's for, its sha256 read twice, and each read
+// after from the file
+const char* Pkg::openFile(const char* p, long n) {
+  hal::log("fm1: %s stays on the SD card (%ld bytes)", p, n);
+  char again[65];
+  if (!hal::sha256(p, sha256) || !hal::sha256(p, again) || strcmp(sha256, again)) {
+    return "The SD card read the file differently twice: try another card.";
+  }
+  file = fopen(p, "rb");
+  cache = (uint8_t*)malloc(4096);
+  if (!file || !cache) {
+    close();
+    return file ? "Not enough memory for the package." : "Can't open the file on the SD card.";
+  }
+  fileSize = n;
+  std::vector<uint8_t> head(std::min<long>(n, (MAX_BLOCKS + 1) * BLK));
+  uint32_t b;
+  if (!fileRead(0, head.data(), head.size()) || !pkgHead(head.data(), head.size(), product, sizeof product, b)) {
+    close();
+    return "That isn't a firmware package.";
+  }
+  blocks = b;
+  size = n - blocks;
+  if (blocks != BLOCKS && !intact({0, this, size})) {  // the 0x7D markers were by chance?
+    blocks = BLOCKS;
+    size = n - BLOCKS;
+    if (intact({0, this, size})) {
+      idText(head.data(), BLOCKS, product, sizeof product);
+    } else {
+      blocks = b;
+      size = n - b;
+    }
+  }
+  return 0;
+}
+
+bool Pkg::fileRead(uint32_t off, uint8_t* out, uint32_t len) const {
+  while (len) {
+    if (off < cacheAt || off >= cacheAt + cacheLen) {
+      cacheAt = off & ~511u;
+      cacheLen = fseek(file, cacheAt, SEEK_SET) ? 0 : fread(cache, 1, 4096, file);
+      if (off >= cacheAt + cacheLen) {
+        cacheLen = 0;
+        return false;
+      }
+    }
+    uint32_t k = std::min<uint32_t>(len, cacheAt + cacheLen - off);
+    memcpy(out, cache + (off - cacheAt), k);
+    off += k, out += k, len -= k;
+  }
+  return true;
+}
+
 void Pkg::close() {
+  if (file) {
+    fclose(file);
+    file = 0;
+  }
+  free(cache);
+  cache = 0;
+  cacheAt = cacheLen = 0;
   free(image);
   image = 0;
   size = 0;
@@ -235,8 +337,7 @@ static void enc(uint8_t* p, uint32_t n) {
   }
 }
 
-static uint16_t crc16(const uint8_t* p, uint32_t n) {
-  uint16_t c = 0;
+static uint16_t crc16(const uint8_t* p, uint32_t n, uint16_t c) {
   while (n--) {
     c ^= (uint16_t)*p++ << 8;
     for (int b = 0; b < 8; b++) {
@@ -249,33 +350,54 @@ static uint16_t crc16(const uint8_t* p, uint32_t n) {
 // the image: a 64-byte header (its file count at 8), then a 80-byte entry for each file (type, index, CRC, -, offset,
 // size), each ciphered on its own
 bool Pkg::flash(uint32_t& at, uint32_t& n) const {
-  if (!image || size < 0x40) {
+  Img img = {image, this, size};
+  uint8_t h[0x40];
+  if ((!image && !file) || !img.read(0, h, sizeof h)) {
     return false;
   }
-  uint8_t h[0x40];
-  memcpy(h, image, sizeof h);
   enc(h, sizeof h);
   uint32_t count = h[8] | h[9] << 8;
   for (uint32_t i = 0; i < count && i < 8 && 0x90 + i * 0x50 <= size; i++) {
     uint8_t e[0x50];
-    memcpy(e, image + 0x40 + i * 0x50, sizeof e);
+    if (!img.read(0x40 + i * 0x50, e, sizeof e)) {
+      return false;
+    }
     enc(e, sizeof e);
     uint32_t type = e[0] | e[1] << 8, crc = e[4] | e[5] << 8;
     uint32_t off = e[8] | e[9] << 8 | e[10] << 16 | (uint32_t)e[11] << 24;
     uint32_t len = e[12] | e[13] << 8 | e[14] << 16 | (uint32_t)e[15] << 24;
     if (type == 0 && off <= size && len <= size - off) {
       at = off, n = len;
-      return crc16(image + off, len) == crc;
+      uint16_t c;
+      return img.crc(off, len, c) && c == crc;
     }
   }
   return false;
 }
 
 bool Pkg::read(uint32_t addr, uint8_t* out, uint32_t len) const {
-  if (!image || addr > size || len > size - addr) {
+  if ((!image && !file) || addr > size || len > size - addr) {
     return false;
   }
-  memcpy(out, image + addr, len);
+  if (image) {
+    memcpy(out, image + addr, len);
+    return true;
+  }
+  // in the file: the first blocks lose their last byte (the marker), the rest is as it is
+  while (len) {
+    uint32_t off, k;
+    if (addr < blocks * KEEP) {
+      off = addr / KEEP * BLK + addr % KEEP;
+      k = std::min<uint32_t>(len, KEEP - addr % KEEP);
+    } else {
+      off = addr - blocks * KEEP + blocks * BLK;
+      k = len;
+    }
+    if (!fileRead(off, out, k)) {
+      return false;
+    }
+    addr += k, out += k, len -= k;
+  }
   return true;
 }
 

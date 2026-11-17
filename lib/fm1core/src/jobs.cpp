@@ -14,6 +14,7 @@
 #include <chrono>
 #include <thread>
 
+#include "flashbuf.h"
 #include "fm1.h"
 #include "midi.h"
 #include "settings.h"
@@ -606,11 +607,14 @@ static void restoreJob(void*) {
 static int reading;  // BACKUP: which reading of its flash (it's read twice, and they must be the same)
 
 // ------------------------------------------------------------------------------------ the flash map ---
-// a reading of the flash, into buf: each sector as it comes is put on the map: what's on it (the first reading), or
-// whether it's the same as in ref (a reading again)
-static const std::vector<uint8_t>* mapBuf;
-static const std::vector<uint8_t>* mapRef;
-static uint32_t mapNext;  // the next sector to put on the map
+// a reading of the flash, a sector at a time as it comes: into out (if there's one), and onto the map: what's on it (the
+// first reading), or whether it's the same as ref says it should be (a reading again: mapBad counts those that aren't)
+static FlashBuf* mapOut;
+static bool (*mapRef)(uint32_t at, uint8_t* out);  // the sector at at, as it should be
+static std::vector<uint8_t> mapSec, mapWant;       // the sector coming, and ref's
+static uint32_t mapNext;                           // the next sector to put on the map
+static uint32_t mapBad;
+static bool mapLost;  // out didn't take a sector (the SD card)
 
 static void mapClear() {
   for (int i = 0; i < MAP_SECTORS; i++) {
@@ -720,37 +724,75 @@ static void fmReading(const char* what, int from, int span) {
 static void mapProgress(uint32_t d, uint32_t t) {
   progress(d, t);
   fmShow(fmWhat, fmFrom + (int)(t ? (uint64_t)d * fmSpan / t : fmSpan), d >= t);
-  if (!mapBuf || mapBuf->size() < d) {
-    return;
-  }
-  for (; (mapNext + 1) * SECTOR <= d && mapNext < MAP_SECTORS; mapNext++) {
-    const uint8_t* p = mapBuf->data() + mapNext * SECTOR;
-    if (mapRef) {
-      bool same = mapRef->size() >= (mapNext + 1) * SECTOR && !memcmp(p, mapRef->data() + mapNext * SECTOR, SECTOR);
-      mapCheck[mapNext] = same ? CHECK_SAME : CHECK_BAD;
-    } else {
-      mapKind[mapNext] = kindOf(p, mapNext);
-    }
-  }
   mapAt = mapNext < MAP_SECTORS && d < t ? (int)mapNext : -1;
   mapSeq++;
 }
 
-// the whole flash into out, onto the map: against ref (a reading again), or not
-static const char* mapRead(const uboot::Chip& chip, std::vector<uint8_t>& out, const std::vector<uint8_t>* ref) {
-  mapBuf = &out;
+// sector s has all come (mapSec)
+static void mapSector(uint32_t s) {
+  const uint8_t* p = mapSec.data();
+  if (mapOut && !mapOut->write(s * SECTOR, p, SECTOR)) {
+    mapLost = true;
+  }
+  if (mapRef) {
+    bool same = mapRef(s * SECTOR, mapWant.data()) && !memcmp(p, mapWant.data(), SECTOR);
+    mapBad += !same;
+    if (s < MAP_SECTORS) {
+      mapCheck[s] = same ? CHECK_SAME : CHECK_BAD;
+    }
+  } else if (s < MAP_SECTORS) {
+    mapKind[s] = kindOf(p, s);
+  }
+  mapNext = s + 1;
+}
+
+// (uboot::read's pieces)
+static void mapGot(uint32_t at, const uint8_t* p, uint32_t n) {
+  while (n) {
+    uint32_t off = at % SECTOR, k = std::min<uint32_t>(n, SECTOR - off);
+    memcpy(mapSec.data() + off, p, k);
+    at += k, p += k, n -= k;
+    if (at % SECTOR == 0) {
+      mapSector(at / SECTOR - 1);
+    }
+  }
+}
+
+// the whole flash into out (if there's one), onto the map: against ref (a reading again: then 0 only if every sector
+// is as ref says), or not
+static const char* mapRead(const uboot::Chip& chip, FlashBuf* out, bool (*ref)(uint32_t, uint8_t*)) {
+  mapOut = out;
   mapRef = ref;
-  mapNext = 0;
+  mapSec.assign(SECTOR, 0);
+  mapWant.assign(ref ? SECTOR : 0, 0);
+  mapNext = mapBad = 0;
+  mapLost = false;
   mapChecking = ref != 0;
-  const char* e = uboot::read(chip, out, mapProgress);
-  mapBuf = mapRef = 0;
+  const char* e = uboot::read(chip, mapGot, mapProgress);
+  if (!e && mapLost) {
+    e = "Can't keep it on the SD card.";
+  }
+  if (!e && ref && mapBad) {
+    hal::log("jobs: %u sectors read differently", (unsigned)mapBad);
+    e = "It read differently twice: try again.";
+  }
+  mapOut = 0;
+  mapRef = 0;
+  std::vector<uint8_t>().swap(mapSec);
+  std::vector<uint8_t>().swap(mapWant);
   mapAt = -1;
   mapSeq++;
   return e;
 }
 
+// (a reading again, against a reading kept)
+static const FlashBuf* mapAgainst;
+static bool againstKept(uint32_t at, uint8_t* out) {
+  return mapAgainst->read(at, out, SECTOR);
+}
+
 // an SMK-37's calibration sector: kept (never written)
-static void mapSmk(const std::vector<uint8_t>& flash) {
+static void mapSmk(const FlashBuf& flash) {
   if (uboot::smkFlash(flash) && SMK_CAL / SECTOR < MAP_SECTORS) {
     mapKind[SMK_CAL / SECTOR] = MAP_KEEP;
     mapSeq++;
@@ -760,7 +802,7 @@ static void mapSmk(const std::vector<uint8_t>& flash) {
 // a flash as backups/fm1-N-FW.bin (its name into saved), and what it was (fm1-N-FW.txt). FW: the firmware it ran
 // ("FM-1_904"), when that's known. N comes first (the lists sort by it). With alive: the loader is still running, and
 // kept so (the card can take longer than it waits)
-static bool saveBackup(const std::vector<uint8_t>& a, const uboot::Chip& chip, const std::string& was, bool alive,
+static bool saveBackup(const FlashBuf& a, const uboot::Chip& chip, const std::string& was, bool alive,
                        const std::string& fw = "") {
   std::string dir = catalog::path(BACKUPS_DIR);
   mkdir(dir.c_str(), 0777);
@@ -784,22 +826,16 @@ static bool saveBackup(const std::vector<uint8_t>& a, const uboot::Chip& chip, c
   std::string base = dir + "/" + stem;
   saved = stem + ".bin";
   char sha[65] = "";
-  hal::sha256(a.data(), a.size(), sha);
-  FILE* f = fopen((dir + "/" + saved).c_str(), "wb");
-  bool ok = f;
-  for (size_t at = 0; ok && at < a.size(); at += 32768) {
-    size_t k = std::min<size_t>(32768, a.size() - at);
-    ok = fwrite(a.data() + at, 1, k, f) == k;
-    if (alive) {
-      uboot::keepAlive();
-    }
+  a.sha256(sha);
+  if (alive) {
+    uboot::keepAlive();
   }
-  ok &= f && !fclose(f);
+  bool ok = a.saveTo((dir + "/" + saved).c_str(), alive ? uboot::keepAlive : 0);
   if (alive) {
     uboot::keepAlive();
   }
   if (ok) {
-    f = fopen((base + ".txt").c_str(), "w");
+    FILE* f = fopen((base + ".txt").c_str(), "w");
     const char* part = uboot::flashName(chip.flashId);
     ok = f && fprintf(f,
                       "fm1buddy backup: all of the %s's flash, through its boot loader\n"
@@ -826,22 +862,23 @@ static void backupJob(void*) {
   hal::bleHold(true);
   uboot::Chip chip;
   const char* e = uboot::enter(device, chip);
-  std::vector<uint8_t> a, b;
+  FlashBuf a;
+  if (!e && !a.make(chip.size, "backup")) {
+    e = "No room to read it into (memory, or the SD card).";
+  }
   if (!e) {
     fmStart(id && isSmk(id->model), "BACKUP");
     step = READING_FLASH;
     reading = 1;
     fmReading("READING", 0, 50);
-    e = mapRead(chip, a, 0);
+    e = mapRead(chip, &a, 0);
     mapSmk(a);
   }
   if (!e) {
     reading = 2;
     fmReading("READING IT AGAIN", 50, 50);
-    e = mapRead(chip, b, &a);
-    if (!e && a != b) {
-      e = "It read differently twice: try again.";
-    }
+    mapAgainst = &a;
+    e = mapRead(chip, 0, againstKept);
   }
   fmShow(e ? "FAILED" : "DONE", e ? -1 : 100, true);
   fmOn = false;
@@ -953,22 +990,35 @@ std::string jobs::recovering() {
 
 // what goes on it, as the flash would be from 0 (its first WRITE_FROM bytes aren't written), and if it's for an
 // SMK-37: 0 or an error
-static const char* image(const std::string& from, std::vector<uint8_t>& out, bool& smk) {
+static const char* image(const std::string& from, FlashBuf& out, bool& smk) {
   std::string p = catalog::path(from);
+  std::vector<uint8_t> buf(SECTOR);
   if (isBackup(from)) {
     FILE* f = fopen(p.c_str(), "rb");
     if (!f) {
       return "Can't open the backup on the SD card.";
     }
-    out.resize(1024 * 1024);
-    size_t n = fread(out.data(), 1, out.size(), f);
-    int more = fgetc(f);
-    fclose(f);
-    if (n != out.size() || more != EOF) {
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (size != 1024 * 1024) {
+      fclose(f);
       return "That backup isn't all of a flash (1 MB).";
     }
+    if (!out.make(WRITE_TO, "recover")) {  // (its key_mac, past WRITE_TO, stays as the chip has it)
+      fclose(f);
+      return "No room for it (memory, or the SD card).";
+    }
+    bool ok = true;
+    for (uint32_t at = 0; ok && at < WRITE_TO; at += SECTOR) {
+      uint32_t k = std::min<uint32_t>(SECTOR, WRITE_TO - at);
+      ok = fread(buf.data(), 1, k, f) == k && out.write(at, buf.data(), k);
+    }
+    fclose(f);
+    if (!ok) {
+      return "The SD card didn't read the whole backup.";
+    }
     smk = uboot::smkFlash(out);
-    out.resize(WRITE_TO);  // (its key_mac stays as the chip has it)
     return 0;
   }
   Pkg pkg;
@@ -986,8 +1036,37 @@ static const char* image(const std::string& from, std::vector<uint8_t>& out, boo
   if (n <= WRITE_FROM || n > (smk ? SMK_CAL : WRITE_TO)) {
     return "Its flash image is a size no firmware's is.";
   }
-  out.assign(pkg.image + at, pkg.image + at + n);
+  if (!out.make(n, "recover")) {
+    return "No room for it (memory, or the SD card).";
+  }
+  for (uint32_t i = 0; i < n; i += SECTOR) {
+    uint32_t k = std::min<uint32_t>(SECTOR, n - i);
+    if (!pkg.read(at + i, buf.data(), k) || !out.write(i, buf.data(), k)) {
+      return "The SD card didn't read the whole package.";
+    }
+  }
   return 0;
+}
+
+// recovery: what's on it (now), what goes on it (want), and how
+static struct {
+  const FlashBuf* now;
+  const FlashBuf* want;
+  bool keepCal;  // an SMK-37's calibration sector stays as it is
+} rec;
+
+// the sector at a as it should be once it's recovered: what goes on it from WRITE_FROM to the image's end, what's on it
+// now everywhere else (and the SMK-37's calibration, unless it's being given one)
+static bool expectSector(uint32_t a, uint8_t* out) {
+  if (!rec.now->read(a, out, SECTOR)) {
+    return false;
+  }
+  uint32_t end = rec.want->size();
+  if (a + SECTOR <= WRITE_FROM || a >= end || (rec.keepCal && a == SMK_CAL)) {
+    return true;
+  }
+  uint32_t from = std::max<uint32_t>(a, WRITE_FROM), to = std::min<uint32_t>(a + SECTOR, end);
+  return rec.want->read(from, out + (from - a), to - from);
 }
 
 static void recoverJob(void*) {
@@ -997,7 +1076,7 @@ static void recoverJob(void*) {
   }
   bool cal = recoverCal == 1;
   calLost = false;
-  std::vector<uint8_t> want, now, back;
+  FlashBuf want, now;
   bool forSmk = false;
   step = GETTING_READY;
   const char* e = !hal::sd() ? "No SD card." : from.empty() ? "Nothing was chosen to go on it."
@@ -1006,7 +1085,7 @@ static void recoverJob(void*) {
     error = e;
     return finish(false);
   }
-  hal::log("recover: %s, %u bytes", from.c_str(), (unsigned)want.size());
+  hal::log("recover: %s, %u bytes%s", from.c_str(), (unsigned)want.size(), want.inMemory() ? "" : " (on the SD card)");
   step = KEYING;
   hal::keyStart();
   while (hal::keyState() != hal::KEY_HOST) {
@@ -1026,12 +1105,15 @@ static void recoverJob(void*) {
   if (!e && (chip.key != FM1_KEY || !uboot::fm1Flash(chip.flashId) || chip.size < WRITE_TO)) {
     e = "That isn't the FM-1's chip: nothing was written.";
   }
+  if (!e && !now.make(chip.size, "now")) {
+    e = "No room to read it into (memory, or the SD card): nothing was written.";
+  }
   if (!e) {
     fmStart(forSmk, "RECOVERY");
     step = READING_FLASH;
     reading = 1;
     fmReading("READING", 0, 30);
-    e = mapRead(chip, now, 0);
+    e = mapRead(chip, &now, 0);
     mapSmk(now);
   }
   // the flash as it was, first: whatever happens next, it's on the SD card
@@ -1046,8 +1128,10 @@ static void recoverJob(void*) {
   // its calibration sector blank, and an SMK-37's backup with one going on: an SMK-37 whose calibration was lost, or an
   // FM-1. Only when that's said (prepare withCal) does the backup's go on it; one it has is never written
   bool giveCal = false;
+  std::vector<uint8_t> ex(SECTOR), nw(SECTOR);  // a sector: as it should be, as it is
   if (!e && !smk && forSmk && isBackup(from) && uboot::smkFlash(want)) {
-    bool blank = std::all_of(now.begin() + SMK_CAL, now.begin() + SMK_CAL + SECTOR, [](uint8_t b) { return b == 0xFF; });
+    bool blank = now.read(SMK_CAL, nw.data(), SECTOR) &&
+                 std::all_of(nw.begin(), nw.end(), [](uint8_t b) { return b == 0xFF; });
     hal::log("recover: no calibration on it (its sector %s)", blank ? "blank" : "not blank");
     if (blank && cal) {
       smk = giveCal = true;
@@ -1066,19 +1150,24 @@ static void recoverJob(void*) {
     }
   }
   std::vector<uint32_t> sectors;
-  std::vector<uint8_t> expect = now;
+  rec = {&now, &want, smk && !giveCal};  // (an SMK-37's calibration: never written)
   if (!e) {
-    std::copy(want.begin() + WRITE_FROM, want.end(), expect.begin() + WRITE_FROM);
-    if (smk && !giveCal) {
-      std::copy(now.begin() + SMK_CAL, now.begin() + SMK_CAL + SECTOR, expect.begin() + SMK_CAL);  // (never written)
-    }
-    for (uint32_t a = WRITE_FROM; a < want.size(); a += SECTOR) {
-      if (memcmp(&expect[a], &now[a], SECTOR)) {
+    for (uint32_t a = WRITE_FROM; !e && a < want.size(); a += SECTOR) {
+      if (!expectSector(a, ex.data()) || !now.read(a, nw.data(), SECTOR)) {
+        e = "Can't read it back from the SD card: nothing was written.";
+      } else if (memcmp(ex.data(), nw.data(), SECTOR)) {
         sectors.push_back(a);
       }
     }
+  }
+  if (!e) {
     hal::log("recover: %u sectors differ", (unsigned)sectors.size());
-    if (memcmp(want.data(), now.data(), WRITE_FROM)) {
+    bool head = false;
+    for (uint32_t a = 0; a < WRITE_FROM && a < want.size(); a += SECTOR) {
+      uint32_t k = std::min<uint32_t>(SECTOR, want.size() - a);
+      head |= want.read(a, ex.data(), k) && now.read(a, nw.data(), k) && memcmp(ex.data(), nw.data(), k);
+    }
+    if (head) {
       hal::log("recover: its head differs from the image's (it isn't written)");
     }
     for (uint32_t a : sectors) {
@@ -1096,8 +1185,12 @@ static void recoverJob(void*) {
       char what[24];
       snprintf(what, sizeof what, "WRITING %u/%u", (unsigned)done + 1, (unsigned)sectors.size());
       fmShow(what, 30 + (int)(40 * done / sectors.size()), true);
+      if (!expectSector(a, ex.data())) {
+        e = "Can't read it back from the SD card.";
+        break;
+      }
       for (int t = 0; t < 3; t++) {
-        e = uboot::writeSector(a, &expect[a]);
+        e = uboot::writeSector(a, ex.data());
         if (!e) {
           break;
         }
@@ -1108,7 +1201,7 @@ static void recoverJob(void*) {
       }
       if (a / SECTOR < MAP_SECTORS) {
         mapMark[a / SECTOR] = MARK_WRITTEN;
-        mapKind[a / SECTOR] = kindOf(&expect[a], a / SECTOR);  // (what's on it now)
+        mapKind[a / SECTOR] = kindOf(ex.data(), a / SECTOR);  // (what's on it now)
       }
       mapAt = -1;
       mapSeq++;
@@ -1119,8 +1212,8 @@ static void recoverJob(void*) {
     step = CHECKING_FLASH;
     reading = 2;
     fmReading("CHECKING", 70, 30);
-    e = mapRead(chip, back, &expect);
-    if (!e && back != expect) {
+    e = mapRead(chip, 0, expectSector);
+    if (e && mapBad) {
       e = "It reads back differently from what was written.";
     }
   }

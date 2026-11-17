@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "catalog.h"
+#include "flashbuf.h"
 
 #define BACKUPS_DIR "/backups"
 
@@ -44,8 +45,10 @@ bool lastChip(Chip& chip);
 const char* enter(int d, Chip& chip);
 // the same with the FM-1 already in its boot loader (recovery: hal.h keyState), or on its way there
 const char* attach(Chip& chip);
-// the whole flash; 0 or an error
-const char* read(const Chip& chip, std::vector<uint8_t>& out, void (*progress)(uint32_t done, uint32_t total));
+// the whole flash, a piece at a time to got (in order, from 0: a few KB each, whole sectors between them); 0 or an
+// error
+const char* read(const Chip& chip, void (*got)(uint32_t at, const uint8_t* p, uint32_t n),
+                 void (*progress)(uint32_t done, uint32_t total));
 // a command, to keep the loader there while the SD card is slow (JieLi's restarted the chip after about 3 s without one)
 void keepAlive();
 
@@ -74,6 +77,7 @@ static inline bool fm1Flash(uint32_t id) {
 #define SMK_CAL 0xC1000u
 #define SMK_MARK 0xC1224u
 bool smkFlash(const std::vector<uint8_t>& flash);  // (a whole flash, or a backup of one)
+bool smkFlash(const FlashBuf& flash);
 // one sector: erased, written, and read back; 0 or an error
 const char* writeSector(uint32_t addr, const uint8_t* data);
 // back to its firmware (the loader resets the chip)

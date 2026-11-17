@@ -159,7 +159,9 @@ void hal::psramFirst(bool on) {
     return;  // (none: everything is in the internal RAM anyway)
   }
   psramOn = on;
+#ifdef CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL  // (a build without PSRAM: not there)
   heap_caps_malloc_extmem_enable(on ? 0 : CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL);  // (as the Arduino core has it)
+#endif
 }
 
 void hal::idle() {

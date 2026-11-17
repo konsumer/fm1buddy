@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <new>
 #include <thread>
 
 #include "hal.h"
@@ -65,7 +66,8 @@ static struct {
   uint8_t ch, note;
 } sounding;
 // chords: the chord each note was played with (+1; 0: none), to let go of the same notes
-static uint8_t (*chordOf)[16][128] = new uint8_t[MIDI_DEVS][16][128]();  // (on the heap: PSRAM on the S3)
+// (made the first time a chord plays: 18 KB, the PSRAM's on the S3, internal RAM on a board without)
+static uint8_t (*chordOf)[16][128];
 
 static bool following() {
   return cur.clock == CLOCK_FOLLOW && hal::millis() - heardAt < HEARD_MS && heardBpm > 0;
@@ -225,7 +227,12 @@ bool play::noteLocked(int d, const uint8_t* msg, Out out) {
     return true;
   }
   // chords
-  uint8_t& was = chordOf[d][ch][note];
+  if (!chordOf && on && cur.chord) {
+    chordOf = new (std::nothrow) uint8_t[MIDI_DEVS][16][128]();
+  }
+  static uint8_t none;  // (no table: no chord was ever played)
+  none = 0;
+  uint8_t& was = chordOf ? chordOf[d][ch][note] : none;
   uint8_t chord = on ? cur.chord : was ? (uint8_t)(was - 1)
                                        : 0;
   if (!chord || chord >= CHORDS) {
@@ -302,7 +309,7 @@ void play::tickLocked(Out out) {
 
 // let go of the chords' notes still held
 static void releaseChords(Out out) {
-  for (int d = 0; d < MIDI_DEVS; d++) {
+  for (int d = 0; chordOf && d < MIDI_DEVS; d++) {
     for (int ch = 0; ch < 16; ch++) {
       for (int n = 0; n < 128; n++) {
         if (uint8_t was = chordOf[d][ch][n]) {

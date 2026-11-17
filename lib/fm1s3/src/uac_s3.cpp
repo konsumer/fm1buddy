@@ -21,7 +21,7 @@
 // bytes waiting for audioRead: ~6 s at 44.1 kHz stereo in PSRAM; without, 64 KB (~0.4 s: the recorder keeps up), made
 // the first time it's asked to stream (a power of 2: the counts wrap)
 static uint32_t RING;
-#define PKT_MAX 1023        // a full-speed isochronous packet, at most
+#define PKT_MAX 1023  // a full-speed isochronous packet, at most
 
 static struct {
   uint8_t daddr;  // 0: none

@@ -21,6 +21,7 @@
 #include "board.h"
 #include "hal.h"
 #include "jobs.h"
+#include "memory.h"
 #include "port.h"
 
 static bool sdOk, logToSd, computer, disk, recovery;
@@ -37,7 +38,7 @@ static RTC_NOINIT_ATTR char hostScript[120];
 static uint32_t hostTestUntil;
 #define LOG_FILE "/sdcard/fm1buddy/" APP_LOG ".txt"
 #define LOG_PREV "/sdcard/fm1buddy/" APP_LOG "-1.txt"  // the run before
-#define LOG_RECOVERY "/sdcard/fm1buddy/recovery.txt"  // recovery runs, added to: restarts don't take them away
+#define LOG_RECOVERY "/sdcard/fm1buddy/recovery.txt"   // recovery runs, added to: restarts don't take them away
 static const char* logFile = LOG_FILE;
 
 // a crash, kept through the restart (RTC memory) and logged then: decode its addresses against the build's
@@ -211,6 +212,8 @@ static void earlyLines() {
   }
 }
 
+static void tlsKeep();  // (HTTPS, below)
+
 void board::begin() {
   mainTask = xTaskGetCurrentTaskHandle();
   set_arduino_panic_handler(onPanic, 0);
@@ -225,6 +228,8 @@ void board::begin() {
       },
       free);
   port::led(0, 0, 0);
+  lowMemory = !ESP.getPsramSize();  // (no PSRAM: big things stay on the SD card, memory.h)
+  tlsKeep();
   sdOk = port::sdBegin();
   WiFi.mode(WIFI_OFF);
   disk = diskFlag == DISK_MODE && sdOk;
@@ -254,7 +259,7 @@ static void usbKnown() {
   usbState = 1;
   recovery = recoveryFlag == RECOVERY_MODE && !computer;  // (not with a computer on the port)
   recoveryFlag = 0;
-  if (recovery) {  // the FM-1 is on the port (not a computer): its USB lines are the key's (key_s3.cpp)
+  if (recovery) {                     // the FM-1 is on the port (not a computer): its USB lines are the key's (key_s3.cpp)
     mkdir("/sdcard/fm1buddy", 0777);  // (the folder all of them share)
     logFile = LOG_RECOVERY;
     if (FILE* f = sdOk ? fopen(logFile, "a") : 0) {
@@ -268,7 +273,7 @@ static void usbKnown() {
     return;
   }
   if ((!computer || hal::computerMidi()) && sdOk) {  // (USB MIDI for a computer: no serial port either)
-    mkdir("/sdcard/fm1buddy", 0777);  // (the folder all of them share)
+    mkdir("/sdcard/fm1buddy", 0777);                 // (the folder all of them share)
     if (newLog()) {
       logToSd = true;
     }
@@ -527,6 +532,22 @@ bool hal::wifiOn() {
 }
 
 // ---------------------------------------------------------------------------------------------- HTTPS ---
+// A board with no PSRAM: TLS's buffers (two of ~17 KB, each in one piece) don't fit once Wi-Fi's own blocks have split
+// the internal RAM. So room for them is kept in one piece from power-on, and let go just as a connection opens
+#define TLS_ROOM (40 * 1024)
+static void* tlsRoom;
+
+static void tlsKeep() {
+  if (lowMemory && !tlsRoom) {
+    tlsRoom = heap_caps_malloc(TLS_ROOM, MALLOC_CAP_INTERNAL);
+  }
+}
+
+static void tlsFree() {
+  free(tlsRoom);
+  tlsRoom = 0;
+}
+
 static esp_err_t onEvent(esp_http_client_event_t* e) {
   if (e->event_id == HTTP_EVENT_ON_HEADER && !strcasecmp(e->header_key, "ETag")) {
     *(std::string*)e->user_data = e->header_value;
@@ -534,8 +555,9 @@ static esp_err_t onEvent(esp_http_client_event_t* e) {
   return ESP_OK;
 }
 
-int hal::get(const char* url, const char* path, std::string* etag, void (*progress)(uint32_t, uint32_t),
-             std::string& err) {
+// with tx: the client's write buffer (the request line, with its URL); redirected: it was sent elsewhere
+static int getWith(const char* url, const char* path, std::string* etag, void (*progress)(uint32_t, uint32_t),
+                   std::string& err, int tx, bool& redirected) {
   std::string tag;
   esp_http_client_config_t c = {};
   c.url = url;
@@ -543,12 +565,18 @@ int hal::get(const char* url, const char* path, std::string* etag, void (*progre
   c.user_data = &tag;
   c.crt_bundle_attach = esp_crt_bundle_attach;
   c.timeout_ms = 15000;
-  c.buffer_size = 4096;
+  c.buffer_size = lowMemory ? 2048 : 4096;
   // GitHub's release downloads redirect to a signed URL of ~4 KB, which goes in the request line: the default
   // write buffer (512) can't hold it, so following the redirect fails ("Out of buffer")
-  c.buffer_size_tx = 8192;
+  c.buffer_size_tx = tx;
   c.user_agent = APP_NAME;
+  static char* buf = (char*)bigAlloc(4096);  // (made once, before TLS takes the room)
+  if (!buf) {
+    err = "Not enough memory.";
+    return -1;
+  }
   esp_http_client_handle_t h = esp_http_client_init(&c);
+  tlsFree();  // (after the client's own buffers: TLS's go where it was)
   if (etag && !etag->empty()) {
     esp_http_client_set_header(h, "If-None-Match", etag->c_str());
   }
@@ -562,6 +590,7 @@ int hal::get(const char* url, const char* path, std::string* etag, void (*progre
     int64_t len = esp_http_client_fetch_headers(h);
     status = esp_http_client_get_status_code(h);
     if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
+      redirected = true;
       if (esp_http_client_set_redirection(h) != ESP_OK) {
         err = "The server's redirect didn't fit: too much of it to read.";
         status = -1;
@@ -581,7 +610,6 @@ int hal::get(const char* url, const char* path, std::string* etag, void (*progre
       status = -1;
       break;
     }
-    static char* buf = (char*)bigAlloc(4096);
     uint32_t got = 0;
     bool ok = true;
     for (;;) {
@@ -621,8 +649,24 @@ int hal::get(const char* url, const char* path, std::string* etag, void (*progre
   }
   esp_http_client_close(h);
   esp_http_client_cleanup(h);
+  tlsKeep();
   if (status == 200 && etag) {
     *etag = tag;
+  }
+  return status;
+}
+
+int hal::get(const char* url, const char* path, std::string* etag, void (*progress)(uint32_t, uint32_t),
+             std::string& err) {
+  // a board with no PSRAM: a small write buffer (its RAM is TLS's and Wi-Fi's), and the big one only when a redirect
+  // didn't go with it
+  bool redirected = false;
+  int status = getWith(url, path, etag, progress, err, lowMemory ? 2048 : 8192, redirected);
+  if (status < 0 && lowMemory && redirected) {
+    hal::log("http: again, with room for the redirect");
+    redirected = false;
+    err.clear();
+    status = getWith(url, path, etag, progress, err, 8192, redirected);
   }
   return status;
 }
@@ -704,9 +748,13 @@ const char* hal::selfUpdate(const char* path, void (*progress)(uint32_t, uint32_
     return to ? "It's too big for this board's app slot." : "This board has no second app slot.";
   }
   hal::log("update: %u bytes into %s (at %06X)", (unsigned)n, to->label, (unsigned)to->address);
+  static uint8_t* buf = (uint8_t*)bigAlloc(4096);
+  if (!buf) {
+    fclose(f);
+    return "Not enough memory.";
+  }
   esp_ota_handle_t h;
   esp_err_t r = esp_ota_begin(to, OTA_WITH_SEQUENTIAL_WRITES, &h);
-  static uint8_t* buf = (uint8_t*)bigAlloc(4096);
   fseek(f, IMAGE_APP_AT, SEEK_SET);
   for (uint32_t at = 0; r == ESP_OK && at < n;) {
     size_t k = fread(buf, 1, std::min<uint32_t>(4096, n - at), f);
@@ -748,6 +796,11 @@ bool hal::sha256(const char* path, char hex[65]) {
   mbedtls_sha256_init(&ctx);
   mbedtls_sha256_starts(&ctx, 0);
   static uint8_t* buf = (uint8_t*)bigAlloc(4096);
+  if (!buf) {
+    fclose(f);
+    mbedtls_sha256_free(&ctx);
+    return false;
+  }
   for (size_t n; (n = fread(buf, 1, 4096, f));) {
     mbedtls_sha256_update(&ctx, buf, n);
   }

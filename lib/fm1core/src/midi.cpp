@@ -6,6 +6,7 @@
 
 #include <chrono>
 #include <mutex>
+#include <new>
 #include <thread>
 
 #include "catalog.h"
@@ -36,18 +37,22 @@ struct Enc {
   bool sx;
 };
 
+// a device's queues (3 KB): made when the first device comes into its slot, and kept for the next (the USB task may
+// still be reading them as one goes). Only the slots used have them: on a board with no PSRAM, that's internal RAM
+struct Bufs {
+  uint8_t out[OUT_N][4];          // to it: USB MIDI packets
+  uint8_t cur[SYSEX_CUR];         // from it: the SysEx being put together
+  uint8_t q[SYSEX_Q][SYSEX_MAX];  // and the complete ones
+  uint8_t qn[SYSEX_Q];
+};
+
 struct Slot {
   Dev d;
-  // to it: USB MIDI packets
-  uint8_t out[OUT_N][4];
+  Bufs* b;  // (0 until a device came here, and always for the touchscreen's or keyboard's: nothing goes to it)
   uint32_t ow, orr;
   Enc enc, dec;  // bytes to it; bytes from it (Bluetooth)
-  // from it: the SysEx being put together, and the complete ones
-  uint8_t cur[SYSEX_CUR];
   uint32_t curN;
   bool curOn;
-  uint8_t q[SYSEX_Q][SYSEX_MAX];
-  uint8_t qn[SYSEX_Q];
   uint32_t qw, qr;
   std::vector<uint8_t>* cap;  // capture: everything, and the message so far
   uint32_t capDone;           // its complete messages end here
@@ -155,7 +160,9 @@ std::string midi::mapProblem() {
 
 static void reset(Slot& s) {
   delete s.cap;
+  Bufs* b = s.b;
   memset(&s, 0, sizeof s);
+  s.b = b;
 }
 
 static void outLocked(int d, const uint8_t* msg, uint32_t n);
@@ -184,6 +191,9 @@ void midi::mount(int d, uint16_t vid, uint16_t pid, const char* name, const char
   std::lock_guard<std::mutex> g(lock);
   Slot& s = slots[d];
   reset(s);
+  if (!s.b && d != MIDI_TOUCH) {
+    s.b = new (std::nothrow) Bufs();
+  }
   s.d.on = true;
   s.d.vid = vid;
   s.d.pid = pid;
@@ -207,8 +217,8 @@ void midi::umount(int d) {
 }
 
 static void push(Slot& s, const uint8_t p[4]) {
-  if (s.ow - s.orr < OUT_N) {
-    memcpy(s.out[s.ow % OUT_N], p, 4);
+  if (s.b && s.ow - s.orr < OUT_N) {
+    memcpy(s.b->out[s.ow % OUT_N], p, 4);
     s.ow++;
   } else {
     s.d.dropped++;
@@ -238,11 +248,11 @@ static void sysexByte(int d, Slot& s, uint8_t b) {
     s.curOn = true;
     s.curN = 0;
   }
-  if (!s.curOn) {
+  if (!s.curOn || !s.b) {
     return;
   }
   if (s.curN < SYSEX_CUR) {
-    s.cur[s.curN++] = b;
+    s.b->cur[s.curN++] = b;
   } else {
     s.curOn = false;  // too long to keep
     s.d.sysexLost++;
@@ -250,12 +260,12 @@ static void sysexByte(int d, Slot& s, uint8_t b) {
   }
   if (b == 0xF7) {
     s.curOn = false;
-    if (mirror::sysex(d, s.cur, s.curN)) {
+    if (mirror::sysex(d, s.b->cur, s.curN)) {
       return;  // the FM-1's screen: it has it
     }
     if (s.curN <= SYSEX_MAX && s.qw - s.qr < SYSEX_Q) {
-      memcpy(s.q[s.qw % SYSEX_Q], s.cur, s.curN);
-      s.qn[s.qw % SYSEX_Q] = s.curN;
+      memcpy(s.b->q[s.qw % SYSEX_Q], s.b->cur, s.curN);
+      s.b->qn[s.qw % SYSEX_Q] = s.curN;
       s.qw++;
     } else {
       s.d.sysexLost++;
@@ -395,12 +405,12 @@ void midi::service(int from, int to) {
     {
       std::lock_guard<std::mutex> g(lock);
       Slot& s = slots[d];
-      n = s.ow - s.orr;
+      n = s.b ? s.ow - s.orr : 0;
       if (n > 64) {
         n = 64;
       }
       for (uint32_t i = 0; i < n; i++) {
-        memcpy(buf[i], s.out[(s.orr + i) % OUT_N], 4);
+        memcpy(buf[i], s.b->out[(s.orr + i) % OUT_N], 4);
       }
     }
     if (!n) {
@@ -506,7 +516,7 @@ bool midi::sendWait(int d, const uint8_t* bytes, uint32_t n, uint32_t ms) {
     {
       std::lock_guard<std::mutex> g(lock);
       Slot& s = slots[d];
-      if (!s.d.on || need > OUT_N) {
+      if (!s.d.on || !s.b || need > OUT_N) {
         return false;
       }
       if (OUT_N - (s.ow - s.orr) >= need) {
@@ -538,11 +548,11 @@ uint32_t midi::sysex(int d, uint8_t* out) {
   }
   std::lock_guard<std::mutex> g(lock);
   Slot& s = slots[d];
-  if (s.qr == s.qw) {
+  if (s.qr == s.qw || !s.b) {
     return 0;
   }
-  uint32_t n = s.qn[s.qr % SYSEX_Q];
-  memcpy(out, s.q[s.qr % SYSEX_Q], n);
+  uint32_t n = s.b->qn[s.qr % SYSEX_Q];
+  memcpy(out, s.b->q[s.qr % SYSEX_Q], n);
   s.qr++;
   return n;
 }

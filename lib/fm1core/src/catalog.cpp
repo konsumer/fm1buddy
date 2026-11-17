@@ -159,8 +159,12 @@ void FwList::swap(FwList& o) {
   kinds.swap(o.kinds);
 }
 
-// big from the start: in the PSRAM (blocks over 4 KB go there), not the internal RAM the SD card and Wi-Fi need
+// big from the start: in the PSRAM (blocks over 4 KB go there), not the internal RAM the SD card and Wi-Fi need. Not on a
+// board with no PSRAM (lowMemory): it would take the internal RAM itself, so the list grows as it needs
 static void roomy(FwList& l) {
+  if (lowMemory) {
+    return;
+  }
   l.items.reserve(256);
   l.text.reserve(32768);
 }
@@ -220,6 +224,10 @@ static int split(std::string& line, const char* v[], int max) {
   return n;
 }
 
+// a board with no PSRAM: no more of the Hub's list than this in memory (the whole of it, 700 or so, takes ~100 KB). For
+// now: the rest stays in HUB_LIST, on the SD card
+#define LOW_MEMORY_HUB 150
+
 bool catalog::loadHub(FwList& out, std::string& updated) {
   FILE* f = fopen(path(HUB_LIST).c_str(), "r");
   if (!f) {
@@ -237,6 +245,10 @@ bool catalog::loadHub(FwList& out, std::string& updated) {
   FwList list;
   roomy(list);
   for (size_t i = 0; readLine(f, line); i++) {
+    if (lowMemory && list.items.size() >= LOW_MEMORY_HUB) {
+      hal::log("hub: only the first %u firmwares (no room for more)", (unsigned)LOW_MEMORY_HUB);
+      break;
+    }
     uint32_t here = at;
     at += line.size() + 1;
     if (!(i & 15)) {
@@ -639,7 +651,9 @@ struct Listing {
 
 static bool listPkgs(const std::string& dir, SdFiles& out) {
   out.list.clear();
-  out.list.reserve(512);  // (in the PSRAM)
+  if (!lowMemory) {
+    out.list.reserve(512);  // (in the PSRAM)
+  }
   out.names.clear();
   std::vector<std::string> folders{""};
   bool whole = true;

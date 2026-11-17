@@ -7,16 +7,8 @@
 #include <algorithm>
 #include <vector>
 
-#include "catalog.h"
+#include "catalog.h"  // (DATA_DIR)
 #include "hal.h"
-
-bool FlashBuf::lowMemory = false;
-
-bool roomFor(size_t n) {
-  void* p = malloc(n);
-  free(p);
-  return p;
-}
 
 bool FlashBuf::make(uint32_t size, const char* name) {
   clear();
@@ -29,8 +21,9 @@ bool FlashBuf::make(uint32_t size, const char* name) {
     n = 0;
     return false;
   }
-  mkdir(catalog::path(DATA_DIR).c_str(), 0777);
-  file = catalog::path(std::string(DATA_DIR "/") + name + ".tmp");
+  std::string dir = std::string(hal::sd()) + DATA_DIR;
+  mkdir(dir.c_str(), 0777);
+  file = dir + "/" + name + ".tmp";
   f = fopen(file.c_str(), "w+b");
   if (!f) {
     hal::log("flashbuf: can't make %s", file.c_str());

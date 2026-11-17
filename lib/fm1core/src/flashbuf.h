@@ -9,9 +9,7 @@
 
 #include <string>
 
-// n bytes would fit in memory now: a big file read whole gets an error where they don't, not a crash (a board with no
-// PSRAM)
-bool roomFor(size_t n);
+#include "memory.h"
 
 class FlashBuf {
  public:
@@ -27,9 +25,6 @@ class FlashBuf {
   bool sha256(char hex[65]) const;
   // all of it into a file; between each 32 KB, between() if it's given (uboot::keepAlive: the SD card can be slow)
   bool saveTo(const char* path, void (*between)()) const;
-
-  // always a file (the simulator's --lowmem: a board with no PSRAM)
-  static bool lowMemory;
 
  private:
   uint8_t* mem = 0;

@@ -12,10 +12,10 @@
 #include <thread>
 
 #include "catalog.h"
-#include "flashbuf.h"
 #include "fm1.h"
 #include "hal.h"
 #include "kits.h"
+#include "memory.h"
 #include "midi.h"
 #include "sloop.h"
 #include "songmidi.h"

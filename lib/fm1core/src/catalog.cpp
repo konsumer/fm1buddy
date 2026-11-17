@@ -14,9 +14,9 @@
 #include <atomic>
 #include <mutex>
 
-#include "flashbuf.h"
 #include "fm1.h"
 #include "hal.h"
+#include "memory.h"
 
 FwList catalog::hub, catalog::sd;
 std::string catalog::hubUpdated;

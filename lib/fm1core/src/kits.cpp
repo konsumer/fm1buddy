@@ -11,7 +11,7 @@
 
 #include <algorithm>
 
-#include "flashbuf.h"
+#include "memory.h"
 
 #define RATE 22050
 #define WAV_MAX (4 * 1024 * 1024)  // a .wav, at most (read whole, into PSRAM)

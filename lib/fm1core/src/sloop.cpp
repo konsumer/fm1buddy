@@ -14,8 +14,8 @@
 #include <thread>
 
 #include "catalog.h"
-#include "flashbuf.h"
 #include "hal.h"
+#include "memory.h"
 #include "midi.h"
 #include "sloopfmt.h"
 

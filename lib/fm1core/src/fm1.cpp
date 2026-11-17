@@ -13,8 +13,8 @@
 #include <thread>
 #include <vector>
 
-#include "flashbuf.h"
 #include "hal.h"
+#include "memory.h"
 #include "midi.h"
 
 static const uint8_t HS_QUERY[] = {0xF0, 0x00, 0x32, 0x45, 0x00, 0x00, 0x00, 0x40, 0x7F, 0xF7};
@@ -195,7 +195,7 @@ const char* Pkg::open(const char* p) {
     fclose(f);
     return "That isn't a firmware package.";
   }
-  uint8_t* raw = FlashBuf::lowMemory ? 0 : (uint8_t*)malloc(n);  // big blocks go to the PSRAM
+  uint8_t* raw = lowMemory ? 0 : (uint8_t*)malloc(n);  // big blocks go to the PSRAM
   if (!raw) {
     fclose(f);
     return openFile(p, n);  // (no room: it stays on the card)

@@ -607,6 +607,12 @@ static void restoreJob(void*) {
 static int reading;  // BACKUP: which reading of its flash (it's read twice, and they must be the same)
 
 // ------------------------------------------------------------------------------------ the flash map ---
+// an SMK-37's flash (its calibration's mark: uboot.h), or a backup of one
+static bool smkIn(const FlashBuf& flash) {
+  uint8_t m[7];
+  return flash.read(SMK_MARK, m, sizeof m) && !memcmp(m, "trimdat", 7);
+}
+
 // a reading of the flash, a sector at a time as it comes: into out (if there's one), and onto the map: what's on it (the
 // first reading), or whether it's the same as ref says it should be (a reading again: mapBad counts those that aren't)
 static FlashBuf* mapOut;
@@ -793,7 +799,7 @@ static bool againstKept(uint32_t at, uint8_t* out) {
 
 // an SMK-37's calibration sector: kept (never written)
 static void mapSmk(const FlashBuf& flash) {
-  if (uboot::smkFlash(flash) && SMK_CAL / SECTOR < MAP_SECTORS) {
+  if (smkIn(flash) && SMK_CAL / SECTOR < MAP_SECTORS) {
     mapKind[SMK_CAL / SECTOR] = MAP_KEEP;
     mapSeq++;
   }
@@ -806,7 +812,7 @@ static bool saveBackup(const FlashBuf& a, const uboot::Chip& chip, const std::st
                        const std::string& fw = "") {
   std::string dir = catalog::path(BACKUPS_DIR);
   mkdir(dir.c_str(), 0777);
-  bool smk = uboot::smkFlash(a);
+  bool smk = smkIn(a);
   const char* prefix = smk ? "smk-" : "fm1-";  // (an SMK-37's has its calibration: uboot.h)
   // N: one past the highest there (with or without a firmware in its name)
   int n = 1;
@@ -1018,7 +1024,7 @@ static const char* image(const std::string& from, FlashBuf& out, bool& smk) {
     if (!ok) {
       return "The SD card didn't read the whole backup.";
     }
-    smk = uboot::smkFlash(out);
+    smk = smkIn(out);
     return 0;
   }
   Pkg pkg;
@@ -1124,12 +1130,12 @@ static void recoverJob(void*) {
   }
   // an FM-1 and an SMK-37 look the same to here: what's on its flash says which it is. The SMK-37's calibration is
   // its own (never written): another SMK-37's backup goes on it with its own calibration kept
-  bool smk = !e && uboot::smkFlash(now);
+  bool smk = !e && smkIn(now);
   // its calibration sector blank, and an SMK-37's backup with one going on: an SMK-37 whose calibration was lost, or an
   // FM-1. Only when that's said (prepare withCal) does the backup's go on it; one it has is never written
   bool giveCal = false;
   std::vector<uint8_t> ex(SECTOR), nw(SECTOR);  // a sector: as it should be, as it is
-  if (!e && !smk && forSmk && isBackup(from) && uboot::smkFlash(want)) {
+  if (!e && !smk && forSmk && isBackup(from) && smkIn(want)) {
     bool blank = now.read(SMK_CAL, nw.data(), SECTOR) &&
                  std::all_of(nw.begin(), nw.end(), [](uint8_t b) { return b == 0xFF; });
     hal::log("recover: no calibration on it (its sector %s)", blank ? "blank" : "not blank");

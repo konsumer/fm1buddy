@@ -19,7 +19,6 @@
 #include <vector>
 
 #include "catalog.h"
-#include "flashbuf.h"
 
 #define BACKUPS_DIR "/backups"
 
@@ -45,10 +44,23 @@ bool lastChip(Chip& chip);
 const char* enter(int d, Chip& chip);
 // the same with the FM-1 already in its boot loader (recovery: hal.h keyState), or on its way there
 const char* attach(Chip& chip);
+// The same, a piece at a time, for a board that does more with the boot loader (lilfm1buddy runs its own menu in the
+// FM-1's RAM, and keeps the loader on its drive). Each 0 or an error:
+// the key to a running FM-1 (MIDI device d): it goes to its boot loader (enter checks it's alone on the hub first)
+const char* sendKey(int d);
+// its boot loader there on USB and answering, within ms (chip.rom: what it says it is)
+const char* rom(Chip& chip, uint32_t ms);
+// a program of ours into its RAM at addr, and run (the boot loader goes from USB: the program has the port)
+const char* run(uint32_t addr, const uint8_t* image, uint32_t n);
+// our loader (loader/: the one built in, or image) run, and what it says of the chip in chip
+const char* loader(Chip& chip);
+const char* loader(Chip& chip, const uint8_t* image, uint32_t n);
 // the whole flash, a piece at a time to got (in order, from 0: a few KB each, whole sectors between them); 0 or an
 // error
 const char* read(const Chip& chip, void (*got)(uint32_t at, const uint8_t* p, uint32_t n),
                  void (*progress)(uint32_t done, uint32_t total));
+// n bytes of it from addr
+const char* read(const Chip& chip, uint32_t addr, uint8_t* out, uint32_t n);
 // a command, to keep the loader there while the SD card is slow (JieLi's restarted the chip after about 3 s without one)
 void keepAlive();
 
@@ -77,7 +89,6 @@ static inline bool fm1Flash(uint32_t id) {
 #define SMK_CAL 0xC1000u
 #define SMK_MARK 0xC1224u
 bool smkFlash(const std::vector<uint8_t>& flash);  // (a whole flash, or a backup of one)
-bool smkFlash(const FlashBuf& flash);
 // one sector: erased, written, and read back; 0 or an error
 const char* writeSector(uint32_t addr, const uint8_t* data);
 // back to its firmware (the loader resets the chip)

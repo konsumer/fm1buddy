@@ -11,7 +11,7 @@
 // times, then quits: 0 if it's installed, 1 if not.
 // --backup backs up the pretend FM-1's flash, --recover FILE (/fm1/X.fwsc or /backups/X.bin) recovers it (recovery
 // mode, the key, the writes), then quit: 0 if it went, 1 if not. Each logs its flash's sha256 after ("sim: flash").
-// --lowmem keeps big things on the SD card (FlashBuf::lowMemory), as a board without PSRAM does (cardbuddy's)
+// --lowmem keeps big things on the SD card (memory.h lowMemory), as a board without PSRAM does (cardbuddy's)
 //
 // The script runs after start: tap X Y (screen pixels), drag X1 Y1 X2 Y2, press X Y and release (a finger held),
 // finger2 X Y and lift2 (a second finger, for the touch controller), wait MS, shot FILE (a .bmp of the
@@ -35,10 +35,10 @@
 
 #include "catalog.h"
 #include "fake.h"
-#include "flashbuf.h"
 #include "fm1.h"
 #include "hal.h"
 #include "jobs.h"
+#include "memory.h"
 #include "settings.h"
 #include "themes.h"
 #include "ui.h"
@@ -155,7 +155,7 @@ int main(int argc, char** argv) {
       recoverFrom = argv[++i];
       fm1 = true;
     } else if (!strcmp(argv[i], "--lowmem")) {
-      FlashBuf::lowMemory = true;
+      lowMemory = true;
     } else if (!strcmp(argv[i], "--install") && i + 1 < argc) {
       install = argv[++i];
       fm1 = true;

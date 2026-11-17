@@ -30,7 +30,7 @@ bool sameHardware(const char* a, const char* b);
 bool pkgHead(const uint8_t* raw, uint32_t n, char* product, uint32_t max, uint32_t& blocks);
 
 // a .fwsc, read from the SD card into memory once (and checked), so the install never waits on the card. Where there
-// isn't room for it (a board with no PSRAM: FlashBuf::lowMemory), it's checked the same way, and stays on the card:
+// isn't room for it (a board with no PSRAM: memory.h), it's checked the same way, and stays on the card:
 // each read is from the file (through a small cache)
 struct Pkg {
   uint8_t* image = 0;     // the logical image (0: it's read from the file)

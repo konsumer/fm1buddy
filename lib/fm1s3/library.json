@@ -1,0 +1,10 @@
+{
+  "name": "fm1s3",
+  "version": "0.1.0",
+  "description": "fm1core's hal.h on an ESP32-S3: the USB host (TinyUSB: MIDI, the FM-1's boot loader, USB audio), its recovery key, Bluetooth MIDI, Wi-Fi and HTTPS, USB MIDI and USB disk for a computer, the log. A board gives it port.h",
+  "license": "GPL-3.0-only",
+  "repository": { "type": "git", "url": "https://github.com/konsumer/fm1buddy.git" },
+  "frameworks": "arduino",
+  "platforms": "espressif32",
+  "build": { "srcDir": "src", "includeDir": "src" }
+}

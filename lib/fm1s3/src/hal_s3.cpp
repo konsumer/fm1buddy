@@ -2,7 +2,6 @@
 // with ESP-IDF's certificate bundle
 #include <Arduino.h>
 #include <Preferences.h>
-#include <SD_MMC.h>
 #include <WiFi.h>
 #include <dirent.h>
 #include <esp_crt_bundle.h>
@@ -22,6 +21,7 @@
 #include "board.h"
 #include "hal.h"
 #include "jobs.h"
+#include "port.h"
 
 static bool sdOk, logToSd, computer, disk, recovery;
 // USB disk mode (hal.h): set, then a restart. Kept across that restart only (a power cycle starts as ever)
@@ -35,8 +35,8 @@ static RTC_NOINIT_ATTR uint32_t recoveryFlag;
 static RTC_NOINIT_ATTR uint32_t hostTest;
 static RTC_NOINIT_ATTR char hostScript[120];
 static uint32_t hostTestUntil;
-#define LOG_FILE "/sdcard/fm1buddy/log.txt"
-#define LOG_PREV "/sdcard/fm1buddy/log-1.txt"         // the run before
+#define LOG_FILE "/sdcard/fm1buddy/" APP_LOG ".txt"
+#define LOG_PREV "/sdcard/fm1buddy/" APP_LOG "-1.txt"  // the run before
 #define LOG_RECOVERY "/sdcard/fm1buddy/recovery.txt"  // recovery runs, added to: restarts don't take them away
 static const char* logFile = LOG_FILE;
 
@@ -148,7 +148,15 @@ void board::logNow() {
 
 static volatile bool psramOn;  // the USB host doesn't start meanwhile: its buffers must be in the internal RAM
 
+void* bigAlloc(size_t n) {
+  void* p = heap_caps_malloc(n, MALLOC_CAP_SPIRAM);
+  return p ? p : heap_caps_malloc(n, MALLOC_CAP_INTERNAL);
+}
+
 void hal::psramFirst(bool on) {
+  if (!ESP.getPsramSize()) {
+    return;  // (none: everything is in the internal RAM anyway)
+  }
   psramOn = on;
   heap_caps_malloc_extmem_enable(on ? 0 : CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL);  // (as the Arduino core has it)
 }
@@ -206,7 +214,7 @@ static void earlyLines() {
 void board::begin() {
   mainTask = xTaskGetCurrentTaskHandle();
   set_arduino_panic_handler(onPanic, 0);
-  logQ = (char (*)[160])heap_caps_malloc(LOG_Q * 160, MALLOC_CAP_SPIRAM);
+  logQ = (char (*)[160])bigAlloc(LOG_Q * 160);
   // (not heap_caps_malloc_extmem_enable(): small blocks must stay internal, the USB host's DMA can't reach PSRAM. The
   // big ones go there anyway: LVGL's pool, MIDI's buffers, TLS's)
   // and TLS's buffers (about 40 KB a connection): with Bluetooth on, the internal RAM can't spare them
@@ -216,31 +224,15 @@ void board::begin() {
         return p ? p : heap_caps_calloc(n, size, MALLOC_CAP_INTERNAL);
       },
       free);
-#ifdef LED_RGB
-  rgbLedWrite(LED_RGB, 0, 0, 0);
-#endif
-#ifdef SD_CLK  // (a board without an SD card: no SD_ pins)
-#ifdef SD_D1
-  SD_MMC.setPins(SD_CLK, SD_CMD, SD_D0, SD_D1, SD_D2, SD_D3);
-  sdOk = SD_MMC.begin("/sdcard", false);
-  if (!sdOk)  // (some boards only wire D0: 1-bit)
-#endif
-  {
-#ifdef SD_CS  // a card wired for SPI: its CS is the card's D3, held high it stays in SD mode (1-bit on SCK, MOSI, MISO)
-    pinMode(SD_CS, OUTPUT);
-    digitalWrite(SD_CS, 1);
-#endif
-    SD_MMC.setPins(SD_CLK, SD_CMD, SD_D0);
-    sdOk = SD_MMC.begin("/sdcard", true);
-  }
-#endif
+  port::led(0, 0, 0);
+  sdOk = port::sdBegin();
   WiFi.mode(WIFI_OFF);
   disk = diskFlag == DISK_MODE && sdOk;
   diskFlag = 0;
   if (disk) {  // the card is the computer's: nothing here touches it, no log on it
     usbState = 1;
     earlyLines();
-    hal::log("fm1buddy: USB disk mode (%u MB)", (unsigned)((uint64_t)SD_MMC.numSectors() * SD_MMC.sectorSize() >> 20));
+    hal::log(APP_NAME ": USB disk mode (%u MB)", (unsigned)((uint64_t)port::sdSectors() * port::sdSectorSize() >> 20));
     return;
   }
   // a computer on the USB-C port (it sends start-of-frames): stay its serial port. Else: the USB host
@@ -263,7 +255,7 @@ static void usbKnown() {
   recovery = recoveryFlag == RECOVERY_MODE && !computer;  // (not with a computer on the port)
   recoveryFlag = 0;
   if (recovery) {  // the FM-1 is on the port (not a computer): its USB lines are the key's (key_s3.cpp)
-    mkdir("/sdcard/fm1buddy", 0777);
+    mkdir("/sdcard/fm1buddy", 0777);  // (the folder all of them share)
     logFile = LOG_RECOVERY;
     if (FILE* f = sdOk ? fopen(logFile, "a") : 0) {
       fputs("--- recovery\n", f);
@@ -271,12 +263,12 @@ static void usbKnown() {
       logToSd = true;
     }
     earlyLines();
-    hal::log("fm1buddy: recovery mode, last reset: %d", (int)esp_reset_reason());
+    hal::log(APP_NAME ": recovery mode, last reset: %d", (int)esp_reset_reason());
     logCrash();
     return;
   }
   if ((!computer || hal::computerMidi()) && sdOk) {  // (USB MIDI for a computer: no serial port either)
-    mkdir("/sdcard/fm1buddy", 0777);
+    mkdir("/sdcard/fm1buddy", 0777);  // (the folder all of them share)
     if (newLog()) {
       logToSd = true;
     }
@@ -286,7 +278,7 @@ static void usbKnown() {
     hostScript[sizeof hostScript - 1] = 0;
   }
   earlyLines();
-  hal::log("fm1buddy: sd %s, usb %s%s, last reset: %d", sdOk ? "mounted" : "none",
+  hal::log(APP_NAME ": sd %s, usb %s%s, last reset: %d", sdOk ? "mounted" : "none",
            computer ? (hal::computerMidi() ? "USB MIDI (a computer)" : "serial (a computer)") : "host", test ? " (a test: 40 s)" : "", (int)esp_reset_reason());
   logCrash();
 }
@@ -446,14 +438,12 @@ bool hal::sdSpace(uint64_t& total, uint64_t& used) {
   if (!sdOk) {
     return false;
   }
-  total = SD_MMC.totalBytes();
-  used = SD_MMC.usedBytes();
-  return true;
+  return port::sdSpace(total, used);
 }
 
 bool hal::load(const char* key, void* p, size_t n) {
   Preferences prefs;
-  prefs.begin("fm1buddy", false);
+  prefs.begin(APP_NAME, false);
   bool ok = prefs.getBytesLength(key) == n && prefs.getBytes(key, p, n) == n;
   prefs.end();
   return ok;
@@ -461,26 +451,17 @@ bool hal::load(const char* key, void* p, size_t n) {
 
 void hal::save(const char* key, const void* p, size_t n) {
   Preferences prefs;
-  prefs.begin("fm1buddy", false);
+  prefs.begin(APP_NAME, false);
   prefs.putBytes(key, p, n);
   prefs.end();
 }
 
 uint32_t hal::batteryMv() {
-#ifdef BAT_ADC
-  return analogReadMilliVolts(BAT_ADC) * 2;  // (the battery, halved by the board's divider)
-#else
-  return 0;  // (no battery pin: the icon stays hidden)
-#endif
+  return port::batteryMv();
 }
 
 void hal::backlight(uint8_t percent) {
-  static bool attached;
-  if (!attached) {
-    ledcAttach(TFT_BL, 5000, 8);
-    attached = true;
-  }
-  ledcWrite(TFT_BL, percent * 255 / 100);
+  port::backlight(percent);
 }
 
 // --------------------------------------------------------------------------------------------- Wi-Fi ---
@@ -566,7 +547,7 @@ int hal::get(const char* url, const char* path, std::string* etag, void (*progre
   // GitHub's release downloads redirect to a signed URL of ~4 KB, which goes in the request line: the default
   // write buffer (512) can't hold it, so following the redirect fails ("Out of buffer")
   c.buffer_size_tx = 8192;
-  c.user_agent = "fm1buddy";
+  c.user_agent = APP_NAME;
   esp_http_client_handle_t h = esp_http_client_init(&c);
   if (etag && !etag->empty()) {
     esp_http_client_set_header(h, "If-None-Match", etag->c_str());
@@ -600,7 +581,7 @@ int hal::get(const char* url, const char* path, std::string* etag, void (*progre
       status = -1;
       break;
     }
-    static char* buf = (char*)heap_caps_malloc(4096, MALLOC_CAP_SPIRAM);
+    static char* buf = (char*)bigAlloc(4096);
     uint32_t got = 0;
     bool ok = true;
     for (;;) {
@@ -702,6 +683,9 @@ bool hal::listDir(const char* path, void (*fn)(const char* name, uint32_t size, 
 #define IMAGE_APP_AT 0x10000
 
 const char* hal::selfUpdate(const char* path, void (*progress)(uint32_t, uint32_t)) {
+  if (!port::selfUpdates()) {
+    return "Update it from where it was installed (M5 Launcher, M5Burner).";
+  }
   FILE* f = fopen(path, "rb");
   if (!f) {
     return "The download isn't on the SD card.";
@@ -722,7 +706,7 @@ const char* hal::selfUpdate(const char* path, void (*progress)(uint32_t, uint32_
   hal::log("update: %u bytes into %s (at %06X)", (unsigned)n, to->label, (unsigned)to->address);
   esp_ota_handle_t h;
   esp_err_t r = esp_ota_begin(to, OTA_WITH_SEQUENTIAL_WRITES, &h);
-  static uint8_t* buf = (uint8_t*)heap_caps_malloc(4096, MALLOC_CAP_SPIRAM);
+  static uint8_t* buf = (uint8_t*)bigAlloc(4096);
   fseek(f, IMAGE_APP_AT, SEEK_SET);
   for (uint32_t at = 0; r == ESP_OK && at < n;) {
     size_t k = fread(buf, 1, std::min<uint32_t>(4096, n - at), f);
@@ -763,7 +747,7 @@ bool hal::sha256(const char* path, char hex[65]) {
   mbedtls_sha256_context ctx;
   mbedtls_sha256_init(&ctx);
   mbedtls_sha256_starts(&ctx, 0);
-  static uint8_t* buf = (uint8_t*)heap_caps_malloc(4096, MALLOC_CAP_SPIRAM);
+  static uint8_t* buf = (uint8_t*)bigAlloc(4096);
   for (size_t n; (n = fread(buf, 1, 4096, f));) {
     mbedtls_sha256_update(&ctx, buf, n);
   }

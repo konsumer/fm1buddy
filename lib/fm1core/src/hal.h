@@ -1,4 +1,4 @@
-// What the app needs from the board (src/s3) or the simulator (src/sim). The slow calls (Wi-Fi, HTTP, sha256)
+// What the app needs from the board (lib/fm1s3) or the simulator (src/sim). The slow calls (Wi-Fi, HTTP, sha256)
 // block: the app makes them from a job (jobs.h), never from the UI.
 #pragma once
 

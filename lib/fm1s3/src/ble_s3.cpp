@@ -17,8 +17,9 @@
 #include "board.h"
 #include "hal.h"
 #include "midi.h"
+#include "port.h"
 
-#define BLE_NAME "fm1buddy"
+#define BLE_NAME APP_NAME
 #define HOST_NAME "bluetooth host"
 #define SLOTS (MIDI_TOUCH - MIDI_USB)
 #define PEERS 6       // found or remembered

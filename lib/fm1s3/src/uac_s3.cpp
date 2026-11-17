@@ -5,7 +5,7 @@
 //
 // Streaming starts when the app asks (alt setting 1, the rate, then a transfer at a time, each queued again as the
 // last one ends: there's a frame, a millisecond, to do that in), and stops when it's done (alt 0). The packets go into
-// a ring in PSRAM for audioRead (the recorder), with peaks for the meter and counts to see what went missing.
+// a ring (in PSRAM, if there is one) for audioRead (the recorder), with peaks for the meter and counts to see what went missing.
 #include <Arduino.h>
 #include <string.h>
 
@@ -13,11 +13,14 @@
 
 #include "board.h"
 #include "hal.h"
+#include "port.h"
 #include "tusb.h"
 // (after tusb.h)
 #include "host/usbh_pvt.h"
 
-#define RING (1024 * 1024)  // bytes waiting for audioRead: ~6 s at 44.1 kHz stereo
+// bytes waiting for audioRead: ~6 s at 44.1 kHz stereo in PSRAM; without, 64 KB (~0.4 s: the recorder keeps up), made
+// the first time it's asked to stream (a power of 2: the counts wrap)
+static uint32_t RING;
 #define PKT_MAX 1023        // a full-speed isochronous packet, at most
 
 static struct {
@@ -32,7 +35,7 @@ static struct {
 
 static std::atomic<bool> want{false};  // the app's: streaming on
 static bool streaming, asking;         // (the host task's)
-static uint8_t* ring = (uint8_t*)heap_caps_malloc(RING, MALLOC_CAP_SPIRAM);
+static uint8_t* ring;
 static std::atomic<uint32_t> ringW{0}, ringR{0};
 static std::atomic<uint32_t> packets{0}, bytes{0}, errors{0}, overruns{0}, startMs{0};
 static std::atomic<uint16_t> peaks[2];
@@ -148,7 +151,7 @@ static bool drvXfer(uint8_t daddr, uint8_t ep, xfer_result_t result, uint32_t n)
   }
   // into the ring
   uint32_t w = ringW, r = ringR;
-  if (RING - (w - r) < n) {
+  if (!ring || RING - (w - r) < n) {
     overruns++;  // nobody's reading it fast enough: this packet is lost
     return true;
   }
@@ -262,6 +265,14 @@ uint32_t hal::audioLost() {
 }
 
 void hal::audioOn(bool on) {
+  if (on && !ring) {
+    RING = ESP.getPsramSize() ? 1024 * 1024 : 64 * 1024;
+    ring = (uint8_t*)bigAlloc(RING);
+    if (!ring) {
+      hal::log("uac: no room for its buffer");
+      return;
+    }
+  }
   if (!on) {
     ringR = ringW.load();
   }
@@ -269,6 +280,9 @@ void hal::audioOn(bool on) {
 }
 
 uint32_t hal::audioRead(uint8_t* out, uint32_t max) {
+  if (!ring) {
+    return 0;
+  }
   uint32_t r = ringR, w = ringW;
   uint32_t n = w - r < max ? w - r : max;
   n &= ~3u;

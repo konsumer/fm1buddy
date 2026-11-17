@@ -102,7 +102,9 @@ lib/fm1core/  the core, with no screen: the Hub's list, MIDI between devices, th
               (SysEx), setups and fomajam's kits and MIDI files (sounds, kits, songmidi), backups (uboot); hal.h is
               what it needs from the board. A PlatformIO library, so other boards' apps (cardbuddy) can use it
 src/app/   the app (LVGL 9): its pages
-src/s3/    the board: screen, touch, SD, Wi-Fi, USB host (TinyUSB), Bluetooth MIDI (NimBLE)
+lib/fm1s3/    the ESP32-S3 side of hal.h: USB host (TinyUSB), the recovery key, Bluetooth MIDI (NimBLE), Wi-Fi, the
+              log; port.h is what it needs from the board. Shared with cardbuddy, like fm1core
+src/s3/    the CYD-S3 boards: screen, touch, and port.h (SD card, light, battery, LED)
 src/sim/   the simulator
 site/      the installer page (GitHub Pages, with the latest release)
 case/      the 3D-printed case (OpenSCAD); tools/cases.sh makes its STLs

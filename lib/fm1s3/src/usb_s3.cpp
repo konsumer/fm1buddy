@@ -19,6 +19,7 @@
 #include "hal.h"
 #include "host/hcd.h"  // (hcd_edpt_close: storageReset)
 #include "midi.h"
+#include "port.h"
 #include "tusb.h"
 
 static bool hostOn;
@@ -37,21 +38,17 @@ static struct {
 } dev[MIDI_USB];
 
 static void blink() {
-#ifdef LED_RGB
   if (!ledOffAt) {
-    rgbLedWrite(LED_RGB, 0, 16, 16);
+    port::led(0, 16, 16);
   }
   ledOffAt = millis() + 20;
-#endif
 }
 
 static void ledLoop() {
-#ifdef LED_RGB
   if (ledOffAt && (int32_t)(millis() - ledOffAt) >= 0) {
-    rgbLedWrite(LED_RGB, 0, 0, 0);
+    port::led(0, 0, 0);
     ledOffAt = 0;
   }
-#endif
 }
 
 // ------------------------------------------------------------------------------------- storage ---

@@ -2,7 +2,7 @@
   "name": "fm1buddy",
   "private": true,
   "scripts": {
-    "fmt": "npx -y prettier -w site README.md LICENSING.md && clang-format -i src/*/*.cpp src/*/*.h lib/fm1core/src/*.cpp lib/fm1core/src/*.h",
+    "fmt": "npx -y prettier -w site README.md LICENSING.md && clang-format -i src/*/*.cpp src/*/*.h lib/*/src/*.cpp lib/*/src/*.h",
     "site": "npx -y http-server site -p 8000 -c-1"
   }
 }

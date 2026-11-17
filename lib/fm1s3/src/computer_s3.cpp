@@ -13,6 +13,7 @@
 #include "board.h"
 #include "hal.h"
 #include "midi.h"
+#include "port.h"
 #include "tusb.h"
 
 #define DEV 0  // its device in midi.h (the USB host isn't running: its slots are free)
@@ -23,7 +24,7 @@ static volatile bool up;
 
 // its interface's descriptor, when the USB device is put together (only added in this mode)
 static uint16_t descriptor(uint8_t* dst, uint8_t* itf) {
-  uint8_t name = tinyusb_add_string_descriptor("fm1buddy");
+  uint8_t name = tinyusb_add_string_descriptor(APP_NAME);
   uint8_t in = tinyusb_get_free_in_endpoint(), out = tinyusb_get_free_out_endpoint();
   if (!in || !out) {
     return 0;
@@ -65,8 +66,8 @@ static void task(void*) {
 
 void board::computerBegin() {
   tinyusb_enable_interface(USB_INTERFACE_MIDI, TUD_MIDI_DESC_LEN, descriptor);
-  USB.productName("fm1buddy");
-  USB.manufacturerName("fm1buddy");
+  USB.productName(APP_NAME);
+  USB.manufacturerName(APP_NAME);
   USB.begin();
   up = true;
   xTaskCreatePinnedToCore(task, "usb midi", 4096, 0, 5, 0, 0);

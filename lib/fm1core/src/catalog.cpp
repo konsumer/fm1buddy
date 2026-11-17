@@ -224,62 +224,118 @@ static int split(std::string& line, const char* v[], int max) {
   return n;
 }
 
-// a board with no PSRAM: no more of the Hub's list than this in memory (the whole of it, 700 or so, takes ~100 KB). For
-// now: the rest stays in HUB_LIST, on the SD card
-#define LOW_MEMORY_HUB 150
+bool catalog::keepHub = true;
+
+// HUB_LIST open, past its first line (when it was made, into when): 0 if it isn't there, or isn't one
+static FILE* openList(std::string& when, uint32_t& at) {
+  FILE* f = fopen(catalog::path(HUB_LIST).c_str(), "r");
+  if (!f) {
+    return 0;
+  }
+  std::string line;
+  const char* v[3];
+  if (!readLine(f, line) || split(line, v, 3) != 2 || strcmp(v[0], LIST_HEAD)) {
+    fclose(f);
+    return 0;
+  }
+  when = v[1];
+  when.erase(when.find_last_not_of(' ') + 1);  // (parseHub leaves room for it)
+  at = line.size() + 1;                        // where the next line starts (line: cut at its tabs, not shorter)
+  return f;
+}
+
+// a line of HUB_LIST (from here in it) onto list: false if it isn't a firmware's
+static bool addLine(std::string& line, uint32_t here, FwList& list) {
+  const char* v[LIST_FIELDS + 1];
+  if (split(line, v, LIST_FIELDS + 1) != LIST_FIELDS) {
+    return false;
+  }
+  FwItem it{};
+  it.name = list.add(v[0], strlen(v[0]));
+  it.author = list.add(v[1], strlen(v[1]));
+  it.version = list.add(v[2], strlen(v[2]));
+  it.date = list.add(v[3], strlen(v[3]));
+  it.file = list.add(v[6], strlen(v[6]));
+  it.product = list.add(v[7], strlen(v[7]));
+  it.sha256 = list.add(v[8], strlen(v[8]));
+  it.line = here;
+  it.size = strtoul(v[9], 0, 10);
+  it.flags = (strchr(v[10], 'b') ? FwItem::BETA : 0) | (strchr(v[10], 's') ? FwItem::STOCK : 0);
+  for (const char* k = v[11]; *k;) {
+    const char* c = strchr(k, ',');
+    size_t n = c ? c - k : strlen(k);
+    it.kinds |= list.kindBit(std::string(k, n));
+    k += n + (c ? 1 : 0);
+  }
+  list.items.push_back(it);
+  return true;
+}
 
 bool catalog::loadHub(FwList& out, std::string& updated) {
-  FILE* f = fopen(path(HUB_LIST).c_str(), "r");
+  std::string when, line;
+  uint32_t at;
+  FILE* f = openList(when, at);
   if (!f) {
     return false;
   }
-  std::string line;
-  const char* v[LIST_FIELDS + 1];
-  if (!readLine(f, line) || split(line, v, 3) != 2 || strcmp(v[0], LIST_HEAD)) {
-    fclose(f);
-    return false;
-  }
-  std::string when = v[1];
-  when.erase(when.find_last_not_of(' ') + 1);  // (parseHub leaves room for it)
-  uint32_t at = line.size() + 1;               // where the next line starts
   FwList list;
   roomy(list);
   for (size_t i = 0; readLine(f, line); i++) {
-    if (lowMemory && list.items.size() >= LOW_MEMORY_HUB) {
-      hal::log("hub: only the first %u firmwares (no room for more)", (unsigned)LOW_MEMORY_HUB);
-      break;
-    }
     uint32_t here = at;
     at += line.size() + 1;
     if (!(i & 15)) {
       hal::idle();  // (the list is long: let the board's idle task run)
     }
-    if (split(line, v, LIST_FIELDS + 1) != LIST_FIELDS) {
-      continue;
-    }
-    FwItem it{};
-    it.name = list.add(v[0], strlen(v[0]));
-    it.author = list.add(v[1], strlen(v[1]));
-    it.version = list.add(v[2], strlen(v[2]));
-    it.date = list.add(v[3], strlen(v[3]));
-    it.file = list.add(v[6], strlen(v[6]));
-    it.product = list.add(v[7], strlen(v[7]));
-    it.sha256 = list.add(v[8], strlen(v[8]));
-    it.line = here;
-    it.size = strtoul(v[9], 0, 10);
-    it.flags = (strchr(v[10], 'b') ? FwItem::BETA : 0) | (strchr(v[10], 's') ? FwItem::STOCK : 0);
-    for (const char* k = v[11]; *k;) {
-      const char* c = strchr(k, ',');
-      size_t n = c ? c - k : strlen(k);
-      it.kinds |= list.kindBit(std::string(k, n));
-      k += n + (c ? 1 : 0);
-    }
-    list.items.push_back(it);
+    addLine(line, here, list);
   }
   fclose(f);
   out.swap(list);
   updated = when;
   return true;
+}
+
+bool catalog::hubWhen(std::string& updated) {
+  uint32_t at;
+  FILE* f = openList(updated, at);
+  if (f) {
+    fclose(f);
+  }
+  return f;
+}
+
+bool catalog::eachHub(bool (*fn)(const FwList& one, void* arg), void* arg) {
+  std::string when, line;
+  uint32_t at;
+  FILE* f = openList(when, at);
+  if (!f) {
+    return false;
+  }
+  FwList one;
+  for (size_t i = 0; readLine(f, line); i++) {
+    uint32_t here = at;
+    at += line.size() + 1;
+    if (!(i & 15)) {
+      hal::idle();
+    }
+    one.clear();
+    if (addLine(line, here, one) && !fn(one, arg)) {
+      break;
+    }
+  }
+  fclose(f);
+  return true;
+}
+
+bool catalog::hubAt(uint32_t line, FwList& one) {
+  FILE* f = fopen(path(HUB_LIST).c_str(), "r");
+  if (!f) {
+    return false;
+  }
+  std::string text;
+  one.clear();
+  bool ok = !fseek(f, line, SEEK_SET) && readLine(f, text) && addLine(text, line, one);
+  fclose(f);
+  return ok;
 }
 
 // ----------------------------------------------------------------------------------- the Hub's JSON ---
@@ -424,6 +480,17 @@ static int hubToLines(JsonFile& in, FILE* out, std::string& updated) {
 }
 
 bool catalog::parseHub(FwList& out, std::string& updated, std::string& err) {
+  if (!writeHub(updated, err)) {
+    return false;
+  }
+  if (!loadHub(out, updated)) {
+    err = "The Hub's list on the SD card didn't read.";
+    return false;
+  }
+  return true;
+}
+
+bool catalog::writeHub(std::string& updated, std::string& err) {
   FILE* json = fopen(path(HUB_CACHE).c_str(), "r");
   if (!json) {
     err = "The Hub's list isn't on the SD card yet.";
@@ -471,10 +538,7 @@ bool catalog::parseHub(FwList& out, std::string& updated, std::string& err) {
   }
   remove(path(HUB_CACHE).c_str());  // (only the list is kept)
   hal::log("hub: %d firmwares", n);
-  if (!loadHub(out, updated)) {
-    err = "The Hub's list on the SD card didn't read.";
-    return false;
-  }
+  updated = when;
   return true;
 }
 

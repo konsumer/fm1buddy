@@ -172,12 +172,12 @@ static void hubJob(void*) {
   }
   step = READING;
   bool ok;
-  if (code == 304) {  // the same list: the one kept
-    ok = catalog::loadHub(hub, hubUpdated);
+  if (code == 304) {  // the same list: the one kept (in memory too, if the app keeps it: catalog::keepHub)
+    ok = catalog::keepHub ? catalog::loadHub(hub, hubUpdated) : catalog::hubWhen(hubUpdated);
     if (!ok) {
       error = "The Hub's list on the SD card didn't read.";
     }
-  } else if ((ok = catalog::parseHub(hub, hubUpdated, error))) {
+  } else if ((ok = catalog::keepHub ? catalog::parseHub(hub, hubUpdated, error) : catalog::writeHub(hubUpdated, error))) {
     if (FILE* f = fopen(etagPath.c_str(), "w")) {
       fputs(etag.c_str(), f);
       fclose(f);

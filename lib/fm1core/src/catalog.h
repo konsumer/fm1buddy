@@ -75,6 +75,18 @@ std::string path(const std::string& p);
 bool parseHub(FwList& out, std::string& updated, std::string& err);
 // the list from HUB_LIST, in a moment: false if it isn't there
 bool loadHub(FwList& out, std::string& updated);
+// The app's choice: the Hub's list kept in memory (hub, and jobs::hub as the Hub job reads it), or not. All of it is
+// ~100 KB: a board that can't spare that (no PSRAM) sets it false, and reads HUB_LIST as it needs it, with these
+extern bool keepHub;
+// the Hub's list as it came (HUB_CACHE) into HUB_LIST (HUB_CACHE removed), not kept: false (err says why) if it doesn't
+bool writeHub(std::string& updated, std::string& err);
+// when HUB_LIST was made: false if it isn't there
+bool hubWhen(std::string& updated);
+// HUB_LIST, a firmware at a time, without keeping it: fn gets each in a list of its own (one[0], its line in
+// one[0].line); false from fn stops it. False if there's no list
+bool eachHub(bool (*fn)(const FwList& one, void* arg), void* arg);
+// one firmware of HUB_LIST, by where its line starts (FwItem::line), into one (one[0]): false if it isn't there
+bool hubAt(uint32_t line, FwList& one);
 // the files in /fm1, with what the Hub's list knows about them; marks the Hub's that are there. Quick: it reads no
 // whole file (a sha256 not known yet is read in the background: hashSd)
 void scanSd();

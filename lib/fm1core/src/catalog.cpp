@@ -244,6 +244,13 @@ static FILE* openList(std::string& when, uint32_t& at) {
   return f;
 }
 
+// a list of one, emptied for the next (not FwList::clear: that's a change to a list on screen, FwList::changes)
+static void empty(FwList& one) {
+  one.items.clear();
+  one.text.assign(1, 0);
+  one.kinds.clear();
+}
+
 // a line of HUB_LIST (from here in it) onto list: false if it isn't a firmware's
 static bool addLine(std::string& line, uint32_t here, FwList& list) {
   const char* v[LIST_FIELDS + 1];
@@ -317,7 +324,7 @@ bool catalog::eachHub(bool (*fn)(const FwList& one, void* arg), void* arg) {
     if (!(i & 15)) {
       hal::idle();
     }
-    one.clear();
+    empty(one);
     if (addLine(line, here, one) && !fn(one, arg)) {
       break;
     }
@@ -332,7 +339,7 @@ FILE* catalog::openHub() {
 
 bool catalog::hubAt(FILE* f, uint32_t line, FwList& one) {
   std::string text;
-  one.clear();
+  empty(one);
   return f && !fseek(f, line, SEEK_SET) && readLine(f, text) && addLine(text, line, one);
 }
 

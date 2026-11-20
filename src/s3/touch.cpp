@@ -24,6 +24,8 @@ static uint32_t readyAt;
 
 static uint8_t maxTouches = 2;
 static bool asked;  // (the panel can still be starting when the app is: ask again until it answers)
+static touch::Point last[2];
+static int nLast;
 
 static bool reg(uint16_t r, uint8_t* d, size_t n) {
   Wire.beginTransmission(ADDR);
@@ -63,28 +65,41 @@ int touch::read(Point* out, int max) {
     }
   }
   uint8_t info;
-  if (!reg(REG_TOUCH_INFO, &info, 1) || !(info & 0x08)) {
-    return 0;  // (no new coordinates: the fingers are as they were)
+  if (!reg(REG_TOUCH_INFO, &info, 1)) {
+    return 0;
+  }
+  if (!(info & 0x08)) {
+    // The controller only sets With Coord. when a new report is ready.  A
+    // polling read between reports is not a release: returning zero here
+    // makes LVGL see a press/release pair for every scan interval, which can
+    // activate a button several times while one finger is held down.
+    for (int i = 0; i < nLast; i++) {
+      out[i] = last[i];
+    }
+    return nLast;
   }
   uint8_t r[REPORT * MAX_POINTS];
   const int n = max < maxTouches ? max : maxTouches;
   if (!reg(REG_POINTS, r, (size_t)maxTouches * REPORT)) {
     return 0;
   }
-  int got = 0;
-  for (int i = 0; i < maxTouches && got < n; i++) {
+  nLast = 0;
+  for (int i = 0; i < maxTouches && nLast < n; i++) {
     const uint8_t* p = r + i * REPORT;
     if (!(p[0] & 0x80)) {
       continue;  // (not a finger)
     }
-    Point& f = out[got++];
+    touch::Point& f = last[nLast++];
     f.x = (int16_t)((p[0] & 0x3F) << 8 | p[1]);
     f.y = (int16_t)(p[2] << 8 | p[3]);
     f.id = (uint8_t)i;
     f.weight = 32;  // (the panel leaves these out)
     f.area = 2;
   }
-  return got;
+  for (int i = 0; i < nLast; i++) {
+    out[i] = last[i];
+  }
+  return nLast;
 }
 
 void touch::sleep() {
